@@ -40,6 +40,7 @@ export class TopLevelTransformer {
 				if(!this.secondaryProgram.isTheTempFile(secFile)){
 					return secFile
 				}
+				console.log("Running transformer on secondary file " + file.fileName)
 				let tricks = new RuntyperTricks(this.tricks.toolboxContext, context, Tsc)
 				let structureTrans = new TypeStructureAppendingTransformer(tricks, this.params)
 				let secResult = structureTrans.transform(secFile, file)
