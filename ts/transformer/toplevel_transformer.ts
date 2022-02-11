@@ -22,24 +22,15 @@ export class TopLevelTransformer {
 	transform(file: Tsc.SourceFile): Tsc.SourceFile {
 
 		try {
-			if(this.secondaryProgram.isTheTempFile(file)){
-				return file
-			}
-
 			let result = new TypeInferringTransformer(this.tricks).transform(file)
 			if(result === file){
 				let structureTrans = new TypeStructureAppendingTransformer(this.tricks, this.params)
 				return structureTrans.transform(result, file)
 			}
-			let printer = Tsc.createPrinter()
-			let code = printer.printFile(result)
 
-			// file.fileName.match(/functions/) && console.log("Code of " + file.fileName + ":\n" + code)
+			// file.fileName.match(/tricky_import/) && console.log("Code of " + file.fileName + ":\n" + code)
 
-			this.secondaryProgram.applyTransformerToFileCode(code, (context, secFile) => {
-				if(!this.secondaryProgram.isTheTempFile(secFile)){
-					return secFile
-				}
+			this.secondaryProgram.applyTransformerToFileCode(result, (context, secFile) => {
 				let tricks = new RuntyperTricks(this.tricks.toolboxContext, context, Tsc)
 				let structureTrans = new TypeStructureAppendingTransformer(tricks, this.params)
 				result = structureTrans.transform(secFile, file)

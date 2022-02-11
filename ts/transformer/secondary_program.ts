@@ -2,40 +2,29 @@ import {ToolboxTransformer} from "@nartallax/toolbox-transformer"
 import * as Tsc from "typescript"
 import * as Path from "path"
 
+/** A secondary watch program that runs on files of original program and allows substituting them for second-hand processing
+ * Should be mostly detached from FS. No watchers, no writing. */
 export class SecondaryProgram {
 
-	private readonly host: Tsc.CompilerHost
+	private readonly fileOverrides = new Map<string, string>()
+	private readonly fileWatchers = new Map<string, () => void>()
+	private readonly dirWatchers = new Map<string, (path: string) => void>()
 	private readonly watchHost: Tsc.WatchCompilerHostOfConfigFile<Tsc.SemanticDiagnosticsBuilderProgram>
-	private program: Tsc.SemanticDiagnosticsBuilderProgram | undefined = undefined
-	private watchProgram: Tsc.WatchOfConfigFile<Tsc.SemanticDiagnosticsBuilderProgram>
-	private readonly fullTempFileName: string
-	private code: string | null = null
-	private notifyFileUpdated: (() => void) | null = null
-	transformer: ((context: Tsc.TransformationContext, f: Tsc.SourceFile) => Tsc.SourceFile) | null = null
+	private watchProgram: Tsc.WatchOfConfigFile<Tsc.SemanticDiagnosticsBuilderProgram> | null = null
+	private transformer: ((context: Tsc.TransformationContext, f: Tsc.SourceFile) => Tsc.SourceFile) | null = null
+	private currentlyUpdatedFile: string | null = null
 
-	constructor(private readonly context: ToolboxTransformer.TransformerProjectContext, tempFileName: string) {
-		this.fullTempFileName = Path.resolve(Path.dirname(context.tsconfigPath), tempFileName)
-		this.host = Tsc.createCompilerHost(context.program.getCompilerOptions())
-		this.patchHost(this.host, context.program)
+	constructor(context: ToolboxTransformer.TransformerProjectContext) {
 		this.watchHost = this.createWatchHost(context)
-
-		// this.program = this.watchHost.createProgram(
-		// 	[...context.program.getRootFileNames(), this.fullTempFileName],
-		// 	context.program.getCompilerOptions(),
-		// 	this.host,
-		// 	undefined,
-		// 	undefined,
-		// 	context.program.getProjectReferences()
-		// )
-
 		this.watchProgram = Tsc.createWatchProgram(this.watchHost)
 	}
 
-	isTheTempFile(file: Tsc.SourceFile | string): boolean {
-		let filePath = typeof(file) === "string" ? file : file.fileName
-		// let moduleName = this.tricks.modulePathResolver.getCanonicalModuleName(filePath)
-		// return moduleName === this.tempFileName
-		return filePath === this.fullTempFileName
+	// noone will ever use it, but it's good thing to have this method anywat
+	shutdown(): void {
+		if(this.watchProgram){
+			this.watchProgram.close()
+			this.watchProgram = null
+		}
 	}
 
 	private createWatchHost(context: ToolboxTransformer.TransformerProjectContext): Tsc.WatchCompilerHostOfConfigFile<Tsc.SemanticDiagnosticsBuilderProgram> {
@@ -45,73 +34,57 @@ export class SecondaryProgram {
 			{
 				...Tsc.sys,
 				writeFile: (path, data, writeBom) => {
-					void path, data, writeBom // nop
+					void path, data, writeBom // absolutely no writing to FS
 				},
 				setTimeout: (cb, ms, ...args) => {
+					// it's not the most beautiful thing
+					// but we REALLY REALLY need to run emit() syncronously after FS notification
 					void ms
-					!args ? cb() : cb(...args)
+					cb(...args)
 				},
-				fileExists: path => {
-					return this.isTheTempFile(path) || Tsc.sys.fileExists(path)
-				},
-				readFile: path => {
-					if(this.isTheTempFile(path)){
-						return this.code || "let x = 'this is code in case it is absent UwU'"
-					} else {
-						return Tsc.sys.readFile(path)
-					}
-				}
+				readFile: path => this.fileOverrides.get(path) || Tsc.sys.readFile(path)
 			},
 			Tsc.createSemanticDiagnosticsBuilderProgram,
-			() => {/* nope*/},
-			() => {/* nope*/}
+			diag => {
+				if(diag.category === Tsc.DiagnosticCategory.Error){
+					throw new Error("Secondary program discovered an error during compilation: " + diag.messageText + " (at " + diag.start + " of file " + diag.file?.fileName + ")")
+				}
+			},
+			() => {
+				// nop
+			}
 		)
 
-		// prevents rebuild scheduling
-		// result.setTimeout = undefined
-		// result.clearTimeout = undefined
-		result.setTimeout = (cb, ms, ...args) => {
-			void ms
-			cb(...args)
+		result.watchFile = (path, cb) => {
+			this.fileWatchers.set(path, () => cb(path, Tsc.FileWatcherEventKind.Changed))
+			return {close: () => {
+				this.fileWatchers.delete(path)
+			}}
 		}
-
-		let watchFile = result.watchFile
-		if(!watchFile){
-			throw new Error("WatchHost has no watchFile()! Unexpected.")
+		result.watchDirectory = (path, callback) => {
+			this.dirWatchers.set(path, callback)
+			return {close: () => {
+				// nop
+			}}
 		}
-		result.watchFile = (path, cb, pollingInterval, opts) => {
-			if(this.isTheTempFile(path)){
-				this.notifyFileUpdated = () => cb(path, Tsc.FileWatcherEventKind.Changed)
-				return {close: () => {
-					this.notifyFileUpdated = null
-				}}
-			} else {
-				void pollingInterval, opts
-				return {close: () => {
-					// nop
-				}}
-				// return watchFile(path, cb, pollingInterval, opts)
-			}
-		}
-		result.watchDirectory = () => ({close: () => {
-			// nop
-		}})
 
 		let createProgram = result.createProgram
 		result.createProgram = (rootNames, options, host, oldProgram, configFileParsingDiagnostics, projectReferences) => {
-			rootNames = [...(rootNames || []), this.fullTempFileName]
 			let program = createProgram(
 				rootNames, options, host, oldProgram, configFileParsingDiagnostics, projectReferences
 			)
 
 			let emit = program.emit
 			program.emit = (target, write, cancToken, onlyDts, trans) => {
+				if(!target && this.currentlyUpdatedFile){
+					target = program.getSourceFile(this.currentlyUpdatedFile)
+				}
 				trans = trans || {}
 				trans.before ||= []
 				trans.before.push(context => ({
 					transformBundle: x => x,
 					transformSourceFile: file => {
-						if(!this.transformer){
+						if(!this.transformer || (file.fileName !== this.currentlyUpdatedFile)){
 							return file
 						} else {
 							return this.transformer(context, file)
@@ -127,97 +100,51 @@ export class SecondaryProgram {
 		return result
 	}
 
-	private patchHost(host: Tsc.CompilerHost, program: Tsc.Program): void {
-
-		void program
-		let scriptTarget = program.getCompilerOptions().target || Tsc.ScriptTarget.ES5
-		let knownFiles = new Map<string, Tsc.SourceFile>()
-		host.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) => {
-			let code = host.readFile(fileName)
-			if(!code){
-				let msg = "Cannot get source file for path " + fileName + ": no file content"
-				if(onError){
-					onError(msg)
-					return
-				} else {
-					throw new Error(msg)
-				}
-
+	private findDirWatcher(srcPath: string): (path: string) => void {
+		let currentPath = srcPath
+		while(currentPath){
+			let watcher = this.dirWatchers.get(currentPath)
+			if(watcher){
+				console.log("Found watcher at " + currentPath + " for " + srcPath)
+				return watcher
 			}
 
-			let oldFile = knownFiles.get(fileName)
-			if(oldFile){
-				oldFile = Tsc.updateLanguageServiceSourceFile(oldFile,
-					Tsc.ScriptSnapshot.fromString(code),
-					"",
-					{span: {start: 0, length: oldFile.text.length}, newLength: code.length}
-				)
-				knownFiles.set(fileName, oldFile)
-				return oldFile
+			let newPath = Path.dirname(currentPath)
+			if(newPath === currentPath){
+				break
 			}
-
-			// TODO: why do I need those? investigate
-			void languageVersion, shouldCreateNewSourceFile
-			let result = Tsc.createLanguageServiceSourceFile(
-				fileName,
-				Tsc.ScriptSnapshot.fromString(code),
-				scriptTarget,
-				"",
-				true
-			)
-			knownFiles.set(fileName, result)
-			return result
+			currentPath = newPath
 		}
-
-		let origReadFile = host.readFile
-		host.readFile = fileName => {
-			if(this.isTheTempFile(fileName) && this.code){
-				return this.code
-			} else {
-				return origReadFile.call(host, fileName)
-			}
-		}
-
-		host.writeFile = (name, data, writeBOM, onError, sourceFiles) => {
-			void name, data, writeBOM, onError, sourceFiles // nop
-		}
+		throw new Error("Directory watcher not found for file " + srcPath)
 	}
 
-	private firstTime = true
-	applyTransformerToFileCode(fileCode: string, transformer: (context: Tsc.TransformationContext, file: Tsc.SourceFile) => Tsc.SourceFile): void {
+	/** Having file from original program, substitute the code of secondary program with current code of the file and run a transformer on the resulting (re-parsed) AST */
+	applyTransformerToFileCode(sourceFile: Tsc.SourceFile, transformer: (context: Tsc.TransformationContext, file: Tsc.SourceFile) => Tsc.SourceFile): void {
+
 		let start = Date.now()
-		let mainProgram = this.context.program
-		let rootNames = mainProgram.getRootFileNames()
-		rootNames = [...rootNames, this.fullTempFileName]
-		void rootNames
-		this.code = fileCode
-		this.transformer = transformer
+		try {
+			this.currentlyUpdatedFile = sourceFile.fileName
+			this.transformer = transformer
 
-		if(!this.notifyFileUpdated){
-			if(!this.firstTime){
-				throw new Error("No file update callback! Secondary program was not initialized.")
+			let printer = Tsc.createPrinter()
+			let code = printer.printFile(sourceFile)
+
+			if(!this.fileWatchers.has(sourceFile.fileName)){
+				// that means new file is created! let's notify the program.
+				let dirWatcher = this.findDirWatcher(sourceFile.fileName)
+				dirWatcher(sourceFile.fileName)
 			}
-			this.firstTime = false
-		} else {
-			this.notifyFileUpdated()
+			let notifier = this.fileWatchers.get(sourceFile.fileName)
+			if(!notifier){
+				throw new Error("No file update callback! That's unexpected. Cannot pass primary program code to secondary.")
+			} else {
+				this.fileOverrides.set(sourceFile.fileName, code)
+				notifier()
+			}
+		} finally {
+			this.transformer = null
+			this.currentlyUpdatedFile = null
 		}
-
-		void this.program
-		void this.watchProgram
-		// let program = this.watchProgram.getProgram()
-
-		// let file = program.getSourceFile(this.fullTempFileName)
-		// void file
-		// program.emit(file, () => {
-		// 	// nothing
-		// }, undefined, false, {
-		// 	before: [context => ({
-		// 		transformSourceFile: file => transformer(context, file),
-		// 		transformBundle: x => x
-		// 	})]
-		// })
-
-		this.transformer = null
 		console.log("Secondary program call took " + (Date.now() - start) + "ms")
 	}
 
