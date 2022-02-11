@@ -14,8 +14,7 @@ export class TypeStructureAppendingTransformer {
 
 	/** Iterate over two nodes children simultaneously, implying they have same structure
 	 * @param destinationFile file that receives new nodes
-	 * @param referenceFile file that is used as main source of nodes to iterate over
-	 */
+	 * @param referenceFile file that is used as main source of nodes to iterate over */
 	private walkTwoNodes<T extends Tsc.Node>(destination: T, reference: T, callback: (destination: Tsc.Node, reference: Tsc.Node) => Tsc.Node): T {
 		let index = 0
 
@@ -40,13 +39,13 @@ export class TypeStructureAppendingTransformer {
 	/** Iterate over all scopes in file and run a callback for each node in scope.
 	 * Scope = namespaces or toplevel (files) */
 	private forEachNodeScoped<T extends Tsc.SourceFile | Tsc.ModuleBlock>(dest: T, ref: T,
-		openScope: (destNode: Tsc.SourceFile | Tsc.ModuleBlock, refNode: Tsc.SourceFile | Tsc.ModuleBlock, parentScope: Scope | null) => Scope,
-		closeScope: (scope: Scope, parentScope: Scope | null) => Tsc.SourceFile | Tsc.ModuleBlock,
+		openScope: (refNode: Tsc.SourceFile | Tsc.ModuleBlock, parentScope: Scope | null) => Scope,
+		closeScope: (scope: Scope, updatedDest: Tsc.SourceFile | Tsc.ModuleBlock, parentScope: Scope | null) => Tsc.SourceFile | Tsc.ModuleBlock,
 		callback: (destNode: Tsc.Node, refNode: Tsc.Node, scope: Scope) => Tsc.Node,
 		parentScope: Scope | null = null): T {
 
-		let scope = openScope(dest, ref, parentScope)
-		this.walkTwoNodes(dest, ref, (destNode, refNode) => {
+		let scope = openScope(ref, parentScope)
+		let updatedDest = this.walkTwoNodes(dest, ref, (destNode, refNode) => {
 			if(Tsc.isModuleDeclaration(destNode)){
 				return this.walkTwoNodes(destNode, refNode, (destNode, refNode) => {
 					if(Tsc.isModuleBlock(destNode) && Tsc.isModuleBlock(refNode)){
@@ -59,15 +58,14 @@ export class TypeStructureAppendingTransformer {
 				return callback(destNode, refNode, scope)
 			}
 		})
-		return closeScope(scope, parentScope) as T // just trust the callback
+		return closeScope(scope, updatedDest, parentScope) as T // just trust the callback
 	}
 
 	transform(actualFile: Tsc.SourceFile, sourceFile: Tsc.SourceFile): Tsc.SourceFile {
 		let typeNodeDescriber = new TypeNodeDescriber(this.tricks, this.params, sourceFile, actualFile)
 
 		return this.forEachNodeScoped(sourceFile, actualFile,
-			(dest, ref, parentScope) => new Scope(
-				dest,
+			(ref, parentScope) => new Scope(
 				ref,
 				parentScope?.refTypes || new StringNodeableUniqMap<Runtyper.TypeDeclaration>("refTypes"),
 				parentScope?.valueTypes || new StringNodeableUniqMap<Runtyper.Type>("valueTypes"),
@@ -76,17 +74,18 @@ export class TypeStructureAppendingTransformer {
 				this.tricks,
 				typeNodeDescriber
 			),
-			(scope, parentScope) => {
-				if(Tsc.isSourceFile(scope.dest)){
-					return this.attachTypesToFile(scope.dest, scope)
-				} else if(Tsc.isModuleBlock(scope.dest)){
+			(scope, dest, parentScope) => {
+				if(Tsc.isSourceFile(dest)){
+					return this.attachTypesToFile(dest, scope)
+				} else if(Tsc.isModuleBlock(dest)){
 					if(parentScope){
 						parentScope.forceImport = parentScope.forceImport || scope.functionsByName.size > 0
 					}
-					return Tsc.factory.updateModuleBlock(scope.dest, [
-						...scope.dest.statements,
+					let result = Tsc.factory.updateModuleBlock(dest, [
+						...dest.statements,
 						...scope.functionsByName.toNodes(this.tricks, this.params.moduleIdentifier)
 					])
+					return result
 				} else {
 					throw new Error("Scope wrapper is not file or module, wtf?")
 				}
@@ -120,7 +119,7 @@ export class TypeStructureAppendingTransformer {
 			let name = scope.describer.nameOfNode(node.name)
 			scope.addFunctionSignature(name, signature)
 			if(signature.hasImplementation){
-				let path = this.tricks.getPathToNodeUpToLimit(node.name, x => x === scope.ref)
+				let path = this.tricks.getPathToNodeUpToLimit(node.name, x => x === scope.pathLimiter)
 				scope.functionsByName.add(name, path)
 			}
 		} else if(Tsc.isClassDeclaration(node)){
@@ -131,7 +130,7 @@ export class TypeStructureAppendingTransformer {
 			} else {
 				let clsFullName = scope.describer.nameOfNode(node.name)
 				scope.valueTypes.add(clsFullName, cls)
-				let path = this.tricks.getPathToNodeUpToLimit(node.name, x => x === scope.ref)
+				let path = this.tricks.getPathToNodeUpToLimit(node.name, x => x === scope.pathLimiter)
 				scope.functionsByName.add(clsFullName, path)
 
 				scope.addVariables(variables)
@@ -140,7 +139,7 @@ export class TypeStructureAppendingTransformer {
 					let fnFullName = scope.describer.nameOfNode(fn.name)
 					scope.addFunctionSignature(fnFullName, fn.signature)
 					if(fn.hasImpl){
-						let path = this.tricks.getPathToNodeUpToLimit(fn.name, x => x === scope.ref)
+						let path = this.tricks.getPathToNodeUpToLimit(fn.name, x => x === scope.pathLimiter)
 						// TODO: tricky names in method identifier
 						scope.functionsByName.add(fnFullName, path)
 					}
@@ -180,7 +179,6 @@ export class TypeStructureAppendingTransformer {
 /** An object that hold information about types in current scope */
 class Scope {
 	constructor(
-		public dest: Tsc.Node,
 		public ref: Tsc.Node,
 		public refTypes: StringNodeableUniqMap<Runtyper.TypeDeclaration>,
 		public valueTypes: StringNodeableUniqMap<Runtyper.Type>,
@@ -207,11 +205,15 @@ class Scope {
 		})
 	}
 
+	get pathLimiter(): Tsc.Node | undefined {
+		return this.ref.parent?.parent
+	}
+
 	addVariables(variables: TypedVariable[]) {
 		variables.forEach(v => {
 			let name = this.describer.nameOfNode(v.name)
 			this.valueTypes.add(name, v.type)
-			let path = this.tricks.getPathToNodeUpToLimit(v.name, x => x === this.ref)
+			let path = this.tricks.getPathToNodeUpToLimit(v.name, x => x === this.pathLimiter)
 			this.functionsByName.add(name, path)
 		})
 	}
