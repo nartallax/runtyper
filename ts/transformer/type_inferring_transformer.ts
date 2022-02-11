@@ -26,13 +26,9 @@ export class TypeInferringTransformer {
 		return Tsc.visitEachChild(file, subnode => visitor(subnode), this.tricks.transformContext)
 	}
 
-	private declType(name: Tsc.BindingName | Tsc.PropertyName, decl: Tsc.Declaration): Tsc.TypeNode {
+	private declType(name: Tsc.BindingName | Tsc.PropertyName, decl: Tsc.Declaration): Tsc.TypeNode | undefined {
 		let type = this.tricks.checker.getTypeAtLocation(name)
-		let typeNode = this.tricks.checker.typeToTypeNode(type, decl, undefined)
-		if(!typeNode){
-			throw new Error("Cannot construct type node for " + decl.getText())
-		}
-		return typeNode
+		return this.tricks.checker.typeToTypeNode(type, decl, undefined)
 	}
 
 	private transformVariableStatement(node: Tsc.VariableStatement): Tsc.VariableStatement {

@@ -38,3 +38,11 @@ export type MyClsStaticField = typeof MyClass.clsStaticMember
 export type MyClsInstanceFieldA = typeof myClassInstance.name
 export type MyClsInstanceFieldB = typeof myClassInstance.whoopsie
 export type MyClsInstanceFieldC = typeof myClassInstance.protoName
+
+// yes, this class WILL produce bad type structures
+// not much I can/want/know to do about this
+export class Itrbl implements Iterable<null> {
+	[Symbol.iterator](): never {
+		throw new Error("nope")
+	}
+}

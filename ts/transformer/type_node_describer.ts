@@ -43,12 +43,12 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 				// TODO: does nodes in class gets named correctly? test for that
 				if(this.tricks.isNodeStatic(member)){
 					let name = this.nameOfNode(member)
-					staticProps.set(this.tricks.propertyNameToString(member.name), {
+					staticProps.set(member.name.getText(), {
 						name, access: this.tricks.nodeAccessLevel(member)
 					})
 					variables.push({name: member.name, type})
 				} else {
-					instanceProps.set(this.tricks.propertyNameToString(member.name), {
+					instanceProps.set(member.name.getText(), {
 						...type,
 						access: this.tricks.nodeAccessLevel(member),
 						...(member.questionToken ? {optional: true} : {})
@@ -80,7 +80,7 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 					hasImpl: !!member.body,
 					signature
 				})
-				methods.set(this.tricks.propertyNameToString(member.name), {
+				methods.set(member.name.getText(), {
 					type: "method",
 					functionName: name,
 					access: this.tricks.nodeAccessLevel(member),
@@ -103,17 +103,22 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 
 	describeVariables(decl: Tsc.VariableStatement): TypedVariable[] {
 		let result = [] as TypedVariable[]
-		decl.declarationList.declarations.forEach(declPart => {
+		for(let declPart of decl.declarationList.declarations){
 			let vars = this.tricks.extractVariablesFromDeclaration(declPart)
 			let typeNode = declPart.type
 			let declType = !typeNode
 				? this.fail("No type node found; expected them to be added on previous step: ", declPart)
 				: this.describeType(typeNode)
 			vars.forEach(v => {
-				let type = this.makeTypeOfVariable(declType, v)
+				let type: Runtyper.Type
+				if(!Tsc.isIdentifier(v.identifier)){
+					type = this.fail("Cannot understand type of variable: name is not identifier: ", v.identifier)
+				} else {
+					type = this.makeTypeOfVariable(declType, v)
+				}
 				result.push({type, name: v.identifier})
 			})
-		})
+		}
 		return result
 	}
 
@@ -324,7 +329,7 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 		if(!node.qualifier){
 			return this.fail("Cannot process type import node without qualifier: ", node)
 		}
-		let names = this.tricks.entityNameToArray(node.qualifier)
+		let names = this.tricks.entityNameToNameArray(node.qualifier)
 		let argType = node.argument
 		let moduleName: string
 		if(Tsc.isLiteralTypeNode(argType) && Tsc.isStringLiteral(argType.literal)){
@@ -409,13 +414,13 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 				let decl = decls[0]!
 				if(decls.length !== 1 || (!Tsc.isVariableDeclaration(decl) && !Tsc.isBindingElement(decl)) || !Tsc.isIdentifier(decl.name)){
 					propType = this.fail("More than one declaration of key variable: ", member)
-					propName = member.name.getText()
+					propName = this.tricks.propertyNameToString(member.name) || member.name.getText()
 				} else {
 					propName = this.nameOfNode(decl.name)
 				}
 			} else {
 				propObj = props
-				propName = this.tricks.propertyNameToString(member.name)
+				propName = this.tricks.propertyNameToString(member.name) || member.name.getText()
 			}
 
 			return {propObj, propName, propType}
@@ -598,7 +603,7 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 			}
 			let rawModName = modSpec.text
 			let fullModName = this.tricks.modulePathResolver.resolveModuleDesignator(rawModName, this.sourceFile.fileName)
-			let origName = (decl.propertyName || decl.name).text
+			let origName = decl.propertyName || decl.name
 			return {
 				type: "reference",
 				name: this.nameOfModuleAndIdentifiers(fullModName, [origName]),

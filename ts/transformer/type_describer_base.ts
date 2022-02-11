@@ -59,11 +59,11 @@ export abstract class TypeDescriberBase {
 	nameOfNode(node: Tsc.Node): string {
 		let ref = this.tricks.getReferenceToNode(node)
 		let moduleName = node.getSourceFile() === this.actualFile ? this.sourceModuleName : ref.moduleName
-		return this.nameOfModuleAndIdentifiers(moduleName, ref.identifiers)
+		return this.nameOfModuleAndIdentifiers(moduleName, ref.nodePath)
 	}
 
-	protected nameOfModuleAndIdentifiers(moduleName: string, identifiers: string[]): string {
-		return moduleName + ":" + identifiers.join(".")
+	protected nameOfModuleAndIdentifiers(moduleName: string, identifiers: Tsc.PropertyName[]): string {
+		return moduleName + ":" + identifiers.map(x => this.tricks.propertyNameToString(x) || x.getText()).join(".")
 	}
 
 	protected wrapTypeExtraction<T>(node: Tsc.Node, action: () => T): T | Runtyper.IllegalType {

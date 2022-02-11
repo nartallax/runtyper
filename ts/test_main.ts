@@ -61,5 +61,6 @@ test("main test", async assert => {
 	await assertValueJs("functions")
 	await assertValueJs("classes")
 	await assertValueJs("namespaces")
+	await assertValueJs("tricky_imports")
 
 })

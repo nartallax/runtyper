@@ -7,6 +7,8 @@ PERFORMANCE CONCERNS
 
 POSSIBLE CAVEATS
 
+type borrowing and how not to
+
 TBD
 
 generic parameters of functions? what types will be returned? what validator will be built?
