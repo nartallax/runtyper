@@ -337,7 +337,7 @@ export default ToolboxTransformer.makeImplodableTransformer<Runtyper.Transformer
 		let transformer = new TopLevelTransformer(
 			tricks,
 			transParams,
-			secondaryProgram ||= new SecondaryProgram(opts)
+			secondaryProgram ||= new SecondaryProgram(opts.tsconfigPath)
 		)
 		return sourceFile => {
 			let result = transformer.transform(sourceFile)

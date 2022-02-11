@@ -1,4 +1,3 @@
-import {ToolboxTransformer} from "@nartallax/toolbox-transformer"
 import * as Tsc from "typescript"
 import * as Path from "path"
 
@@ -6,16 +5,16 @@ import * as Path from "path"
  * Should be mostly detached from FS. No watchers, no writing. */
 export class SecondaryProgram {
 
-	private readonly fileOverrides = new Map<string, string>()
 	private readonly fileWatchers = new Map<string, () => void>()
 	private readonly dirWatchers = new Map<string, (path: string) => void>()
 	private readonly watchHost: Tsc.WatchCompilerHostOfConfigFile<Tsc.SemanticDiagnosticsBuilderProgram>
 	private watchProgram: Tsc.WatchOfConfigFile<Tsc.SemanticDiagnosticsBuilderProgram> | null = null
 	private transformer: ((context: Tsc.TransformationContext, f: Tsc.SourceFile) => Tsc.SourceFile) | null = null
 	private currentlyUpdatedFile: string | null = null
+	private currentCode: string | null = null
 
-	constructor(context: ToolboxTransformer.TransformerProjectContext) {
-		this.watchHost = this.createWatchHost(context)
+	constructor(tsconfigPath: string) {
+		this.watchHost = this.createWatchHost(tsconfigPath)
 		this.watchProgram = Tsc.createWatchProgram(this.watchHost)
 	}
 
@@ -27,9 +26,9 @@ export class SecondaryProgram {
 		}
 	}
 
-	private createWatchHost(context: ToolboxTransformer.TransformerProjectContext): Tsc.WatchCompilerHostOfConfigFile<Tsc.SemanticDiagnosticsBuilderProgram> {
+	private createWatchHost(tsconfigPath: string): Tsc.WatchCompilerHostOfConfigFile<Tsc.SemanticDiagnosticsBuilderProgram> {
 		let result = Tsc.createWatchCompilerHost(
-			context.tsconfigPath,
+			tsconfigPath,
 			{},
 			{
 				...Tsc.sys,
@@ -42,7 +41,7 @@ export class SecondaryProgram {
 					void ms
 					cb(...args)
 				},
-				readFile: path => this.fileOverrides.get(path) || Tsc.sys.readFile(path)
+				readFile: path => (path === this.currentlyUpdatedFile ? this.currentCode : null) || Tsc.sys.readFile(path)
 			},
 			Tsc.createSemanticDiagnosticsBuilderProgram,
 			diag => {
@@ -105,7 +104,6 @@ export class SecondaryProgram {
 		while(currentPath){
 			let watcher = this.dirWatchers.get(currentPath)
 			if(watcher){
-				console.log("Found watcher at " + currentPath + " for " + srcPath)
 				return watcher
 			}
 
@@ -120,8 +118,6 @@ export class SecondaryProgram {
 
 	/** Having file from original program, substitute the code of secondary program with current code of the file and run a transformer on the resulting (re-parsed) AST */
 	applyTransformerToFileCode(sourceFile: Tsc.SourceFile, transformer: (context: Tsc.TransformationContext, file: Tsc.SourceFile) => Tsc.SourceFile): void {
-
-		let start = Date.now()
 		try {
 			this.currentlyUpdatedFile = sourceFile.fileName
 			this.transformer = transformer
@@ -138,14 +134,14 @@ export class SecondaryProgram {
 			if(!notifier){
 				throw new Error("No file update callback! That's unexpected. Cannot pass primary program code to secondary.")
 			} else {
-				this.fileOverrides.set(sourceFile.fileName, code)
+				this.currentCode = code
 				notifier()
 			}
 		} finally {
 			this.transformer = null
 			this.currentlyUpdatedFile = null
+			this.currentCode = null
 		}
-		console.log("Secondary program call took " + (Date.now() - start) + "ms")
 	}
 
 }
