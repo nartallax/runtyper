@@ -318,7 +318,7 @@ export namespace Runtyper {
 }
 
 export default ToolboxTransformer.makeImplodableTransformer<Runtyper.TransformerParameters>(opts => {
-	Error.stackTraceLimit = 5
+	Error.stackTraceLimit = 100
 	let params: Runtyper.TransformerParameters = {
 		tempTsFilePath: "runtyper_virtual_file_that_it_uses_for_advanced_type_inferrence.ts",
 		moduleName: "@nartallax/runtyper",

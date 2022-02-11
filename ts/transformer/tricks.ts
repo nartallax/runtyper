@@ -19,30 +19,6 @@ export class RuntyperTricks extends ToolboxTransformer.ToolboxTricks {
 
 	}
 
-	/*
-	stringLiteralContent(str: Tsc.StringLiteral | string): string {
-		let text: string
-		if(typeof(str) === "string"){
-			text = str
-		} else {
-			try {
-				text = str.getText()
-				console.log("TEXT OF STRLIT: " + text + " (text = " + str.text + ")")
-			} catch(e){
-				console.log(str)
-				throw e
-			}
-		}
-		if(text.charAt(0) === "'"){
-			text = text
-				.substring(1, text.length - 1)
-				.replace(/"/g, "\\\"")
-			text = "\"" + text + "\""
-		}
-		return JSON.parse(text)
-	}
-	*/
-
 	propertyNameToString(name: Tsc.PropertyName): string {
 		if(this.tsc.isIdentifier(name) || this.tsc.isPrivateIdentifier(name)){
 			return name.text

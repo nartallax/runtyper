@@ -40,16 +40,11 @@ export class TopLevelTransformer {
 				if(!this.secondaryProgram.isTheTempFile(secFile)){
 					return secFile
 				}
-				console.log("Running transformer on secondary file " + file.fileName)
 				let tricks = new RuntyperTricks(this.tricks.toolboxContext, context, Tsc)
 				let structureTrans = new TypeStructureAppendingTransformer(tricks, this.params)
-				let secResult = structureTrans.transform(secFile, file)
+				result = structureTrans.transform(secFile, file)
 
-				// if we won't update source code and just shove new nodes in,
-				// text ranges within the nodes applied to old code will mess it up completely
-				result = Tsc.updateSourceFile(result, code, {span: {start: 0, length: result.text.length}, newLength: code.length})
-				result = Tsc.factory.updateSourceFile(result, secResult.statements)
-				return secResult
+				return secFile
 			})
 
 			return result

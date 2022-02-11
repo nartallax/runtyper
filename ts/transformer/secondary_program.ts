@@ -67,11 +67,6 @@ export class SecondaryProgram {
 			() => {/* nope*/}
 		)
 
-		console.log(result.afterProgramCreate + "")
-		// result.afterProgramCreate = () => {
-		// 	// nothing!
-		// }
-
 		// prevents rebuild scheduling
 		// result.setTimeout = undefined
 		// result.clearTimeout = undefined
@@ -117,14 +112,12 @@ export class SecondaryProgram {
 					transformBundle: x => x,
 					transformSourceFile: file => {
 						if(!this.transformer){
-							console.warn("NO transformer exists when secondary program emit() is called!")
 							return file
 						} else {
 							return this.transformer(context, file)
 						}
 					}
 				}))
-				console.log("emit() called on " + (target === undefined ? "nothing" : target.fileName))
 				return emit(target, write, cancToken, onlyDts, trans)
 			}
 
