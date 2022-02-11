@@ -41,7 +41,7 @@ test("main test", async assert => {
 	}
 
 	let assertTypeJs = (name: string) => assertEthalonJs(["types", name])
-	let assertInferrenceJs = (name: string) => assertEthalonJs(["inferrence", name])
+	let assertValueJs = (name: string) => assertEthalonJs(["values", name])
 
 	await assertTypeJs("simple")
 	await assertTypeJs("union_intersection")
@@ -58,7 +58,8 @@ test("main test", async assert => {
 	await assertTypeJs("tricky_property_names")
 	await assertTypeJs("recursive_type")
 	await assertTypeJs("enums")
-	await assertInferrenceJs("functions")
-	await assertInferrenceJs("classes")
+	await assertValueJs("functions")
+	await assertValueJs("classes")
+	await assertValueJs("namespaces")
 
 })
