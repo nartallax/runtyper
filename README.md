@@ -5,9 +5,11 @@ Mainly intended for validation. Other uses are possible, but not really kept in 
 
 PERFORMANCE CONCERNS
 
-POSSIBLE CAVEATS
+POSSIBLE CAVEATS (inferrence)
 
-type borrowing and how not to
+why types inferred the way they are
+
+module pruning
 
 TBD
 

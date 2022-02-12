@@ -4,7 +4,7 @@ import {Runtyper} from "entrypoint"
 
 export const functionsByName = new Map<string, () => void>()
 export const valueTypes = new Map<string, Runtyper.Type>()
-export const refTypes = new Map<string, Runtyper.TypeDeclaration>()
+export const refTypes = new Map<string, Runtyper.Type>()
 export const attachedValidators = new Map<Runtyper.Type, ((v: unknown) => void)[]>()
 
 export function buildValidator(type: Runtyper.Type): (value: unknown) => void {

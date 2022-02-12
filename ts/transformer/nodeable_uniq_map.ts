@@ -4,7 +4,7 @@ import * as Tsc from "typescript"
 export abstract class NodeableUniqMap<K, V> {
 	protected readonly map = new Map<K, V>()
 
-	constructor(private readonly destinationMapName: string) {}
+	constructor(private readonly fnName: string) {}
 
 	protected abstract keyToNode(key: K): Tsc.Expression
 	protected valueToNode(tricks: RuntyperTricks, value: V): Tsc.Expression {
@@ -36,30 +36,34 @@ export abstract class NodeableUniqMap<K, V> {
 		this.map.set(key, value)
 	}
 
-	protected toNode(key: K, value: V, tricks: RuntyperTricks, moduleIdentifier: string): Tsc.Expression {
+	private callExpr(importName: string, arrValues: Tsc.Expression[]): Tsc.ExpressionStatement | null {
 		let factory = Tsc.factory
-		return factory.createCallExpression(
-			factory.createPropertyAccessExpression(
+		return arrValues.length < 1 ? null : factory.createExpressionStatement(
+			factory.createCallExpression(
 				factory.createPropertyAccessExpression(
-					factory.createIdentifier(moduleIdentifier),
-					factory.createIdentifier(this.destinationMapName)
+					factory.createPropertyAccessExpression(
+						factory.createIdentifier(importName),
+						factory.createIdentifier("internal")
+					),
+					factory.createIdentifier(this.fnName)
 				),
-				factory.createIdentifier("set")
-			),
-			undefined,
-			[this.keyToNode(key), this.valueToNode(tricks, value)]
-		)
+				undefined,
+				[factory.createArrayLiteralExpression(
+					arrValues,
+					false
+				)]
+			))
 	}
 
-	toNodes(tricks: RuntyperTricks, moduleIdentifier: string): Tsc.ExpressionStatement[] {
+	toNode(tricks: RuntyperTricks, moduleIdentifier: string): Tsc.ExpressionStatement | null {
 		let factory = Tsc.factory
 
-		return [...this.map.entries()].sort((a, b) => a[0] > b[0] ? 1 : -1).map(([k, v]) => {
-			return factory.createExpressionStatement(
-				this.toNode(k, v, tricks, moduleIdentifier)
-			)
-		})
-
+		return this.callExpr(moduleIdentifier, [...this.map.entries()].sort((a, b) => a[0] > b[0] ? 1 : -1).map(([k, v]) => {
+			return factory.createArrayLiteralExpression([
+				this.keyToNode(k),
+				this.valueToNode(tricks, v)
+			], true)
+		}))
 	}
 
 }
@@ -76,23 +80,4 @@ export class FunctionNameMap extends StringNodeableUniqMap<Tsc.PropertyName[]> {
 		return tricks.propNamesToAccessChain(value)
 	}
 
-	toNodes(tricks: RuntyperTricks, moduleIdentifier: string): Tsc.ExpressionStatement[] {
-
-		let factory = Tsc.factory
-
-		return [...this.map.entries()].sort((a, b) => a[0] > b[0] ? 1 : -1).map(([k, v]) => {
-			return factory.createExpressionStatement(
-				factory.createBinaryExpression(
-					factory.createBinaryExpression(
-						factory.createTypeOfExpression(this.valueToNode(tricks, v)),
-						factory.createToken(Tsc.SyntaxKind.EqualsEqualsEqualsToken),
-						factory.createStringLiteral("function")
-					)
-					,
-					factory.createToken(Tsc.SyntaxKind.AmpersandAmpersandToken),
-					this.toNode(k, v, tricks, moduleIdentifier)
-				)
-			)
-		})
-	}
 }

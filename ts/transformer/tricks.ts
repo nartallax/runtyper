@@ -157,7 +157,7 @@ export class RuntyperTricks extends ToolboxTransformer.ToolboxTricks {
 		let path = [] as Tsc.PropertyName[]
 		let isStaticField = false
 		while(node && !shouldStop(node)){
-			if(this.tsc.isVariableDeclaration(node)){
+			if(this.tsc.isVariableDeclaration(node) || this.tsc.isBindingElement(node)){
 				if(this.tsc.isIdentifier(node.name)){
 					// if declaration of class is put inside variable
 					// the exported name will be not the name of class, but the name of the variable

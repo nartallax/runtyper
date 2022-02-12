@@ -1,100 +1,66 @@
 import {Runtyper} from "entrypoint"
 import {FunctionNameMap, StringNodeableUniqMap} from "transformer/nodeable_uniq_map"
-import {TransParams} from "transformer/toplevel_transformer"
 import {RuntyperTricks} from "transformer/tricks"
 import {TypedVariable, TypeNodeDescriber} from "transformer/type_node_describer"
 import * as Tsc from "typescript"
 
-/** Transformer that collects all the types in file and appends their structure to the end of it */
-export class TypeStructureAppendingTransformer {
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+export interface TransParams extends Runtyper.TransformerParameters {
+	// litRefPacks: Set<string>
+	// refRefPacks: Set<string>
+}
+
+export class Transformer {
 
 	constructor(private readonly tricks: RuntyperTricks,
 		private readonly params: TransParams
 	) {}
 
-	/** Iterate over two nodes children simultaneously, implying they have same structure
-	 * @param destinationFile file that receives new nodes
-	 * @param referenceFile file that is used as main source of nodes to iterate over */
-	private walkTwoNodes<T extends Tsc.Node>(destination: T, reference: T, callback: (destination: Tsc.Node, reference: Tsc.Node) => Tsc.Node): T {
-		let index = 0
+	transform(file: Tsc.SourceFile): Tsc.SourceFile {
+		try {
 
-		let refNodes = [] as Tsc.Node[]
+			let typeNodeDescriber = new TypeNodeDescriber(this.tricks, file)
 
-		Tsc.visitEachChild(reference, refNode => {
-			refNodes.push(refNode)
-			return refNode
-		}, this.tricks.transformContext)
-
-		return Tsc.visitEachChild(destination, desNode => {
-			let refNode = refNodes[index++]
-			if(!refNode){
-				throw new Error("Reference and source AST trees don't match: no reference tree node for destination node " + desNode.getText())
-			} else if(refNode.kind !== desNode.kind){
-				throw new Error("Reference and source AST trees don't match: different kinds of nodes (" + Tsc.SyntaxKind[desNode.kind] + " vs " + Tsc.SyntaxKind[refNode.kind] + ") for destination node " + desNode.getText() + " vs " + refNode.getText())
-			}
-			return callback(desNode, refNode)
-		}, this.tricks.transformContext)
-	}
-
-	/** Iterate over all scopes in file and run a callback for each node in scope.
-	 * Scope = namespaces or toplevel (files) */
-	private forEachNodeScoped<T extends Tsc.SourceFile | Tsc.ModuleBlock>(dest: T, ref: T,
-		openScope: (refNode: Tsc.SourceFile | Tsc.ModuleBlock, parentScope: Scope | null) => Scope,
-		closeScope: (scope: Scope, updatedDest: Tsc.SourceFile | Tsc.ModuleBlock, parentScope: Scope | null) => Tsc.SourceFile | Tsc.ModuleBlock,
-		callback: (destNode: Tsc.Node, refNode: Tsc.Node, scope: Scope) => Tsc.Node,
-		parentScope: Scope | null = null): T {
-
-		let scope = openScope(ref, parentScope)
-		let updatedDest = this.walkTwoNodes(dest, ref, (destNode, refNode) => {
-			if(Tsc.isModuleDeclaration(destNode)){
-				return this.walkTwoNodes(destNode, refNode, (destNode, refNode) => {
-					if(Tsc.isModuleBlock(destNode) && Tsc.isModuleBlock(refNode)){
-						return this.forEachNodeScoped(destNode, refNode, openScope, closeScope, callback, scope)
+			return this.forEachNodeScoped(file,
+				(root, parentScope) => new Scope(
+					root,
+					parentScope,
+					this.tricks,
+					typeNodeDescriber
+				),
+				(scope, root, parentScope) => {
+					if(Tsc.isSourceFile(root)){
+						return this.attachTypesToFile(root, scope)
+					} else if(Tsc.isModuleBlock(root)){
+						if(parentScope){
+							parentScope.forceImport = parentScope.forceImport || scope.functionsByName.size > 0
+						}
+						let fnNode = scope.functionsByName.toNode(this.tricks, this.params.moduleIdentifier)
+						return !fnNode ? root : Tsc.factory.updateModuleBlock(root, [
+							...root.statements,
+							fnNode
+						])
 					} else {
-						return destNode
+						throw new Error("Scope wrapper is not file or module, wtf?")
 					}
-				})
-			} else {
-				return callback(destNode, refNode, scope)
-			}
-		})
-		return closeScope(scope, updatedDest, parentScope) as T // just trust the callback
-	}
-
-	transform(actualFile: Tsc.SourceFile, sourceFile: Tsc.SourceFile): Tsc.SourceFile {
-		let typeNodeDescriber = new TypeNodeDescriber(this.tricks, this.params, sourceFile, actualFile)
-
-		return this.forEachNodeScoped(sourceFile, actualFile,
-			(ref, parentScope) => new Scope(
-				ref,
-				parentScope?.refTypes || new StringNodeableUniqMap<Runtyper.TypeDeclaration>("refTypes"),
-				parentScope?.valueTypes || new StringNodeableUniqMap<Runtyper.Type>("valueTypes"),
-				new FunctionNameMap("functionsByName"), // always new
-				parentScope?.forceImport ?? false,
-				this.tricks,
-				typeNodeDescriber
-			),
-			(scope, dest, parentScope) => {
-				if(Tsc.isSourceFile(dest)){
-					return this.attachTypesToFile(dest, scope)
-				} else if(Tsc.isModuleBlock(dest)){
-					if(parentScope){
-						parentScope.forceImport = parentScope.forceImport || scope.functionsByName.size > 0
+				},
+				(node, scope) => {
+					try {
+						scope.describer.currentNode = node
+						this.updateScope(node, scope)
+					} finally {
+						scope.describer.currentNode = null
 					}
-					let result = Tsc.factory.updateModuleBlock(dest, [
-						...dest.statements,
-						...scope.functionsByName.toNodes(this.tricks, this.params.moduleIdentifier)
-					])
-					return result
-				} else {
-					throw new Error("Scope wrapper is not file or module, wtf?")
+					return node
 				}
-			},
-			(destNode, refNode, scope) => {
-				this.updateScope(refNode, scope)
-				return destNode
+			)
+
+		} catch(e){
+			if(e instanceof Error){
+				console.error(e.stack || e.message)
 			}
-		)
+			throw e
+		}
 	}
 
 	/** Add information about node structure to scope if applicable */
@@ -152,7 +118,12 @@ export class TypeStructureAppendingTransformer {
 		let maps = [scope.refTypes, scope.valueTypes, scope.functionsByName]
 		let forceImport = scope.forceImport
 		let nodes = [] as Tsc.Statement[]
-		maps.forEach(map => nodes.push(...map.toNodes(this.tricks, this.params.moduleIdentifier)))
+		maps.forEach(map => {
+			let node = map.toNode(this.tricks, this.params.moduleIdentifier)
+			if(node){
+				nodes.push(node)
+			}
+		})
 		if(nodes.length < 1 && !forceImport){
 			return file
 		}
@@ -172,20 +143,51 @@ export class TypeStructureAppendingTransformer {
 		)
 	}
 
+	/** Iterate over all scopes in file and run a callback for each node in scope.
+	 * Scope = namespaces or toplevel (files) */
+	private forEachNodeScoped<T extends Tsc.SourceFile | Tsc.ModuleBlock>(scopeRoot: T,
+		openScope: (root: Tsc.SourceFile | Tsc.ModuleBlock, parentScope: Scope | null) => Scope,
+		closeScope: (scope: Scope, updatedRoot: Tsc.SourceFile | Tsc.ModuleBlock, parentScope: Scope | null) => Tsc.SourceFile | Tsc.ModuleBlock,
+		callback: (node: Tsc.Node, scope: Scope) => Tsc.Node,
+		parentScope: Scope | null = null): T {
+
+		let scope = openScope(scopeRoot, parentScope)
+
+		let updatedRoot = Tsc.visitEachChild(scopeRoot, node => {
+			if(Tsc.isModuleDeclaration(node)){
+				return Tsc.visitEachChild(node, node => {
+					if(Tsc.isModuleBlock(node)){
+						return this.forEachNodeScoped(node, openScope, closeScope, callback, scope)
+					} else {
+						return node
+					}
+				}, this.tricks.transformContext)
+			} else {
+				return callback(node, scope)
+			}
+		}, this.tricks.transformContext)
+		return closeScope(scope, updatedRoot, parentScope) as T // just trust the callback
+	}
+
 }
-
-
 
 /** An object that hold information about types in current scope */
 class Scope {
+
+	public refTypes: StringNodeableUniqMap<Runtyper.Type>
+	public valueTypes: StringNodeableUniqMap<Runtyper.Type>
+	public functionsByName: FunctionNameMap = new FunctionNameMap("f")
+	public forceImport = false
+
 	constructor(
-		public ref: Tsc.Node,
-		public refTypes: StringNodeableUniqMap<Runtyper.TypeDeclaration>,
-		public valueTypes: StringNodeableUniqMap<Runtyper.Type>,
-		public functionsByName: FunctionNameMap,
-		public forceImport: boolean,
+		public scopeRoot: Tsc.Node,
+		parentScope: Scope | null,
 		public tricks: RuntyperTricks,
-		public describer: TypeNodeDescriber) {}
+		public describer: TypeNodeDescriber) {
+
+		this.refTypes = parentScope?.refTypes || new StringNodeableUniqMap<Runtyper.Type>("t")
+		this.valueTypes = parentScope?.valueTypes || new StringNodeableUniqMap<Runtyper.Type>("v")
+	}
 
 
 	addFunctionSignature(name: string, signature: Runtyper.CallSignature) {
@@ -206,7 +208,7 @@ class Scope {
 	}
 
 	get pathLimiter(): Tsc.Node | undefined {
-		return this.ref.parent?.parent
+		return this.scopeRoot.parent?.parent
 	}
 
 	addVariables(variables: TypedVariable[]) {

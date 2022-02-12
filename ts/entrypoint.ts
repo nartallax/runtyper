@@ -1,9 +1,8 @@
 import {ToolboxTransformer} from "@nartallax/toolbox-transformer"
 import * as runtime from "runtime"
 import * as Tsc from "typescript"
-import {TopLevelTransformer, TransParams} from "transformer/toplevel_transformer"
 import {RuntyperTricks} from "transformer/tricks"
-import {SecondaryProgram} from "transformer/secondary_program"
+import {Transformer, TransParams} from "transformer/transformer"
 
 export namespace Runtyper {
 
@@ -15,9 +14,6 @@ export namespace Runtyper {
 		moduleName: string
 		/** An identifier that will be used in generated code to refer to this module when imported */
 		moduleIdentifier: string
-		/** What action will compiler do upon discovering an error
-		 * See comment to IllegalType for context */
-		onTransformerTypeError: "throw" | "illegal_type"
 		/** A set of npm package names. If your code references type from one of these packages, copy of the type structure will be included in place where it is referenced.
 		 * This list always includes "typescript", as you kinda always have to use it (all of these Omit, Record and so on)
 		 * (also that means that you won't be able to add validators to types from those packages) */
@@ -36,7 +32,6 @@ export namespace Runtyper {
 	}
 
 	export interface Parameter {
-		readonly type: "parameter"
 		// name can be absent if the parameter is destructurized in declaration
 		// like, `function({a, b}: {a: number, b: string})`
 		// the function has 1 parameter, and this parameter has no clear name
@@ -49,9 +44,9 @@ export namespace Runtyper {
 		readonly type: "class"
 		// everything from `extends` and `implements`
 		readonly heritage?: Type[]
-		readonly methods?: ReadonlyMap<string, Method>
-		readonly staticProperties?: ReadonlyMap<string, StaticProperty>
-		readonly instanceProperties?: ReadonlyMap<string, InstanceProperty>
+		readonly methods?: {readonly [propertyName: string]: Method}
+		readonly staticProperties?: {readonly [propertyName: string]: StaticProperty}
+		readonly instanceProperties?: {readonly [propertyName: string]: InstanceProperty}
 		readonly typeParameters?: TypeParameter[]
 	}
 
@@ -67,7 +62,6 @@ export namespace Runtyper {
 	}
 
 	export interface Method {
-		readonly type: "method"
 		readonly optional?: true
 		// methods don't store most of type information
 		// the type information is stored in separate map
@@ -87,11 +81,13 @@ export namespace Runtyper {
 		readonly signatures: readonly FunctionOverload[]
 	}
 
-	export type Type = PlainType
+	export type Type = PrimitiveType
 	| CompositeType
 	| ConstantType
 	| ConstantUnionType
-	| ReferenceType
+	| TypeReferenceType
+	| ValueReferenceType
+	| CallResultReferenceType
 	| ArrayType
 	| ObjectType
 	| TupleType
@@ -102,17 +98,16 @@ export namespace Runtyper {
 	| MappedType
 	| IndexAccessType
 	| TypeofType
-	| ValueReferenceType
-	| NeverType
 	| ConditionalType
 	| CallSignature
 	| Runtyper.Function
 	| Runtyper.Class
+	| InterfaceDeclaration
+	| AliasDeclaration
+	| EnumDeclaration
 
-	export type TypeDeclaration = InterfaceDeclaration | AliasDeclaration | EnumDeclaration | IllegalType
-
-	export interface PlainType {
-		readonly type: "string" | "number" | "boolean" | "any" | "unknown"
+	export interface PrimitiveType {
+		readonly type: "string" | "number" | "boolean" | "any" | "unknown" | "never"
 	}
 
 	export interface CompositeType {
@@ -132,13 +127,13 @@ export namespace Runtyper {
 	 * but storing each of them as individual type is just bad */
 	export interface ConstantUnionType {
 		readonly type: "constant_union"
-		readonly value: ReadonlySet<ConstantType["value"]>
+		readonly value: readonly ConstantType["value"][]
 	}
 
 	/** A reference for type that is not placed literally in the code, but instead placed as a name, definition of which resides somewhere else.
 	 * This type should go away after call to finalize() */
-	export interface ReferenceType {
-		readonly type: "reference"
+	export interface TypeReferenceType {
+		readonly type: "type_reference"
 		readonly name: string
 		/** What types are passed as generic arguments to referenced type */
 		readonly typeArguments?: (Type | InferType)[]
@@ -154,6 +149,11 @@ export namespace Runtyper {
 	export interface ValueReferenceType {
 		readonly type: "value_reference"
 		readonly name: string
+	}
+
+	export interface CallResultReferenceType {
+		readonly type: "call_result_reference"
+		readonly functionName: string
 	}
 
 	export interface ArrayType {
@@ -174,8 +174,6 @@ export namespace Runtyper {
 		// (as it may be not in the same file)
 		readonly propertyByConstKeys?: {readonly [valueName: string]: ObjectPropertyType}
 		readonly index?: ObjectIndexType
-		// TODO: when validating, die on presence of callsignature
-		readonly callSignatures?: CallSignature[]
 	}
 
 	export interface MappedType {
@@ -226,10 +224,6 @@ export namespace Runtyper {
 		readonly valueName: string
 	}
 
-	export interface NeverType {
-		readonly type: "never"
-	}
-
 	export interface ConditionalType {
 		// when processing, remember the difference in behavior for union and non-union types
 		// also don't forget about infer
@@ -242,7 +236,7 @@ export namespace Runtyper {
 
 	export interface InterfaceDeclaration extends Omit<ObjectType, "type"> {
 		readonly type: "interface"
-		readonly extends?: Type[]
+		readonly heritage?: Type[]
 		readonly typeParameters?: TypeParameter[]
 	}
 
@@ -265,7 +259,7 @@ export namespace Runtyper {
 
 	export interface EnumDeclaration {
 		readonly type: "enum"
-		readonly values: ReadonlySet<number | string>
+		readonly values: (number | string)[]
 	}
 
 	/** This is one way of reporting errors from transformer
@@ -302,7 +296,7 @@ export namespace Runtyper {
 	// export const finalize = runtime.finalize
 
 	/** Type information about interfaces and type aliases */
-	export const refTypes: ReadonlyMap<string, TypeDeclaration> = runtime.refTypes
+	export const refTypes: ReadonlyMap<string, Type> = runtime.refTypes
 	export const functionsByName: ReadonlyMap<string, () => void> = runtime.functionsByName
 	/** Type information about variables, constants, classes and their methods (outside of the functions) */
 	export const valueTypes: ReadonlyMap<string, Type> = runtime.valueTypes
@@ -312,6 +306,28 @@ export namespace Runtyper {
 		// it is left blank intentionally, as it is indeed marker interface
 	}
 
+	export namespace internal {
+		export function t(pairs: [name: string, value: Runtyper.Type][]): void {
+			for(let [name, value] of pairs){
+				runtime.refTypes.set(name, value)
+			}
+		}
+
+		export function v(pairs: [name: string, value: Runtyper.Type][]): void {
+			for(let [name, value] of pairs){
+				runtime.valueTypes.set(name, value)
+			}
+		}
+
+		export function f(pairs: [name: string, value: unknown][]): void {
+			for(let [name, value] of pairs){
+				if(typeof(value) === "function"){
+					runtime.functionsByName.set(name, value as () => void)
+				}
+			}
+		}
+	}
+
 }
 
 export default ToolboxTransformer.makeImplodableTransformer<Runtyper.TransformerParameters>(opts => {
@@ -319,31 +335,20 @@ export default ToolboxTransformer.makeImplodableTransformer<Runtyper.Transformer
 	let params: Runtyper.TransformerParameters = {
 		moduleName: "@nartallax/runtyper",
 		moduleIdentifier: "__RuntyperAutogeneratedImport",
-		onTransformerTypeError: "illegal_type",
 		// literallyReferencablePackages: [],
 		// referenciallyReferencablePackages: [],
 		...opts.params
 	}
 	// params.literallyReferencablePackages.push("typescript")
-	let secondaryProgram: SecondaryProgram | null = null
+
+	let transParams: TransParams = {
+		...params
+		// litRefPacks: new Set(params.literallyReferencablePackages),
+		// refRefPacks: new Set(params.referenciallyReferencablePackages)
+	}
 
 	return transformContext => {
 		let tricks = new RuntyperTricks(opts, transformContext, Tsc)
-		let transParams: TransParams = {
-			...params
-			// litRefPacks: new Set(params.literallyReferencablePackages),
-			// refRefPacks: new Set(params.referenciallyReferencablePackages)
-		}
-		let transformer = new TopLevelTransformer(
-			tricks,
-			transParams,
-			secondaryProgram ||= new SecondaryProgram(opts.tsconfigPath)
-		)
-		return sourceFile => {
-			let start = Date.now()
-			let result = transformer.transform(sourceFile)
-			console.error("Processed " + sourceFile.fileName + " in " + (Date.now() - start) + "ms")
-			return result
-		}
+		return sourceFile => new Transformer(tricks, transParams).transform(sourceFile)
 	}
 })

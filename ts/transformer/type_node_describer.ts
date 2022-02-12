@@ -1,7 +1,7 @@
 import {Runtyper} from "entrypoint"
-import {TransParams} from "transformer/toplevel_transformer"
-import {DestructVariable, RuntyperTricks} from "transformer/tricks"
+import {DestructVariable} from "transformer/tricks"
 import {TypeDescriberBase} from "transformer/type_describer_base"
+import {TypeInferrer} from "transformer/type_inferrer"
 import * as Tsc from "typescript"
 
 export interface TypedVariable {
@@ -17,19 +17,14 @@ export interface TypedFunction {
 
 export class TypeNodeDescriber extends TypeDescriberBase {
 
-	constructor(tricks: RuntyperTricks,
-		params: TransParams,
-		sourceFile: Tsc.SourceFile,
-		actualFile: Tsc.SourceFile,
-		currentNode: Tsc.Node | null = null) {
-
-		super(tricks, params, sourceFile, actualFile, currentNode)
+	private makeInferrer(): TypeInferrer {
+		return new TypeInferrer(this, this.tricks, this.file, this.currentNode)
 	}
 
 	describeClass(decl: Tsc.ClassDeclaration): {cls: Runtyper.Class, variables: TypedVariable[], methods: TypedFunction[]} {
-		let staticProps = new Map<string, Runtyper.StaticProperty>()
-		let instanceProps = new Map<string, Runtyper.InstanceProperty>()
-		let methods = new Map<string, Runtyper.Method>()
+		let staticProps = {} as Record<string, Runtyper.StaticProperty>
+		let instanceProps = {} as Record<string, Runtyper.InstanceProperty>
+		let methods = {} as Record<string, Runtyper.Method>
 		let variables = [] as TypedVariable[]
 		let methodsArr = [] as TypedFunction[]
 
@@ -43,16 +38,16 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 				// TODO: does nodes in class gets named correctly? test for that
 				if(this.tricks.isNodeStatic(member)){
 					let name = this.nameOfNode(member)
-					staticProps.set(member.name.getText(), {
+					staticProps[this.tricks.propertyNameToString(member.name) || member.name.getText()] = {
 						name, access: this.tricks.nodeAccessLevel(member)
-					})
+					}
 					variables.push({name: member.name, type})
 				} else {
-					instanceProps.set(member.name.getText(), {
+					instanceProps[this.tricks.propertyNameToString(member.name) || member.name.getText()] = {
 						...type,
 						access: this.tricks.nodeAccessLevel(member),
 						...(member.questionToken ? {optional: true} : {})
-					})
+					}
 				}
 			} else if(Tsc.isConstructorDeclaration(member)){
 				member.parameters.forEach(param => {
@@ -65,11 +60,11 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 						if(!Tsc.isIdentifier(nameNode)){
 							throw new Error("Name of constructor property is not identifier: " + member.getText())
 						}
-						instanceProps.set(nameNode.text, {
+						instanceProps[nameNode.text] = {
 							...type,
 							access: this.tricks.nodeAccessLevel(param),
 							...(member.questionToken ? {optional: true} : {})
-						})
+						}
 					}
 				})
 			} else if(Tsc.isMethodDeclaration(member)){
@@ -80,12 +75,11 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 					hasImpl: !!member.body,
 					signature
 				})
-				methods.set(member.name.getText(), {
-					type: "method",
+				methods[this.tricks.propertyNameToString(member.name) || member.name.getText()] = {
 					functionName: name,
 					access: this.tricks.nodeAccessLevel(member),
 					...(member.questionToken ? {optional: true} : {})
-				})
+				}
 			}
 		})
 
@@ -95,19 +89,20 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 			type: "class",
 			...(typeParams.length > 0 ? {typeParameters: typeParams} : {}),
 			...(heritage.length > 0 ? {heritage} : {}),
-			...(instanceProps.size > 0 ? {instanceProperties: instanceProps} : {}),
-			...(staticProps.size > 0 ? {staticProperties: staticProps} : {}),
-			...(methods.size > 0 ? {methods} : {})
+			...(Object.keys(instanceProps).length > 0 ? {instanceProperties: instanceProps} : {}),
+			...(Object.keys(staticProps).length > 0 ? {staticProperties: staticProps} : {}),
+			...(Object.keys(methods).length > 0 ? {methods} : {})
 		}, variables, methods: methodsArr}
 	}
 
 	describeVariables(decl: Tsc.VariableStatement): TypedVariable[] {
 		let result = [] as TypedVariable[]
+		let isConst = !!(decl.declarationList.flags & Tsc.NodeFlags.Const)
 		for(let declPart of decl.declarationList.declarations){
 			let vars = this.tricks.extractVariablesFromDeclaration(declPart)
 			let typeNode = declPart.type
 			let declType = !typeNode
-				? this.fail("No type node found; expected them to be added on previous step: ", declPart)
+				? this.makeInferrer().inferVariableDeclarationType(declPart, isConst)
 				: this.describeType(typeNode)
 			vars.forEach(v => {
 				let type: Runtyper.Type
@@ -127,7 +122,7 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 			let typeNode = param.type
 			let type: Runtyper.Type
 			if(!typeNode){
-				type = this.fail("No explicit function parameter type! Type inferrence did not run? Parameter is: ", param)
+				type = this.fail("No explicit function parameter type: ", param)
 			} else {
 				type = this.describeType(typeNode)
 			}
@@ -141,7 +136,7 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 
 		let retTypeNode = decl.type
 		let retType = !retTypeNode
-			? this.fail("No explicit function return type! Type inferrence did not run? Function is: ", decl)
+			? this.fail("No explicit function return type: ", decl)
 			: this.describeType(retTypeNode)
 
 		let typeParams = this.describeTypeParameters(decl)
@@ -179,8 +174,8 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 		return type
 	}
 
-	describeInterface(node: Tsc.InterfaceDeclaration): Runtyper.TypeDeclaration {
-		return this.wrapTypeExtraction(node, () => {
+	describeInterface(node: Tsc.InterfaceDeclaration): Runtyper.Type {
+		return this.wrapTypeExtraction(() => {
 			let base = this.describeObjectType(node)
 			if(base.type === "illegal"){
 				return base
@@ -196,7 +191,7 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 			let result: Runtyper.InterfaceDeclaration = {
 				...base,
 				type: "interface",
-				...(extnds.length < 1 ? {} : {extends: extnds}),
+				...(extnds.length < 1 ? {} : {heritage: extnds}),
 				...(typeParams.length < 1 ? {} : {typeParameters: typeParams})
 			}
 
@@ -204,8 +199,8 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 		})
 	}
 
-	describeAlias(node: Tsc.TypeAliasDeclaration): Runtyper.TypeDeclaration {
-		return this.wrapTypeExtraction(node, () => {
+	describeAlias(node: Tsc.TypeAliasDeclaration): Runtyper.Type {
+		return this.wrapTypeExtraction(() => {
 			let typeParameters = this.describeTypeParameters(node)
 			return {
 				type: "alias",
@@ -215,7 +210,7 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 		})
 	}
 
-	describeEnum(node: Tsc.EnumDeclaration): Runtyper.TypeDeclaration {
+	describeEnum(node: Tsc.EnumDeclaration): Runtyper.Type {
 		let values = new Set<string | number>()
 		for(let member of node.members){
 			let name = member.name
@@ -226,7 +221,7 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 				return this.fail("Type of member " + name.getText() + " is not string or number literal: ", node)
 			}
 		}
-		return {type: "enum", values}
+		return {type: "enum", values: [...values].sort()}
 	}
 
 	private describeTypeParameters(node: Tsc.DeclarationWithTypeParameterChildren): Runtyper.TypeParameter[] {
@@ -244,7 +239,7 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 		return result
 	}
 
-	private describeType(node: Tsc.Node): Runtyper.Type {
+	describeType(node: Tsc.Node): Runtyper.Type {
 		if(Tsc.isParenthesizedTypeNode(node)){
 			return this.describeType(node.type)
 		} else if(Tsc.isLiteralTypeNode(node)){
@@ -339,7 +334,7 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 			return this.fail("Cannot process type import with non-constant argument: ", node)
 		}
 		let fullName = this.nameOfModuleAndIdentifiers(moduleName, names)
-		return {type: "reference", name: fullName}
+		return {type: "type_reference", name: fullName}
 	}
 
 	private describeUnionType(node: Tsc.UnionTypeNode): Runtyper.Type {
@@ -377,7 +372,7 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 
 		let constUnion: Runtyper.ConstantUnionType = {
 			type: "constant_union",
-			value: new Set(constValues)
+			value: [...new Set(constValues)].sort()
 		}
 
 		if(otherTypes.length === 0){
@@ -393,38 +388,7 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 
 	private describeObjectType(node: Tsc.TypeLiteralNode | Tsc.InterfaceDeclaration): Runtyper.Type {
 		let props = {} as Record<string, Runtyper.ObjectPropertyType>
-		let varProps = {} as Record<string, Runtyper.ObjectPropertyType>
-		let callSignatures = [] as Runtyper.CallSignature[]
-		let hasVarProp = false
 		let index = null as Runtyper.ObjectIndexType | null
-
-		let determinePropNameObjMbType = (member: Tsc.MethodSignature | Tsc.PropertySignature) => {
-			let propObj: Record<string, Runtyper.ObjectPropertyType>
-			let propName: string
-			let propType: Runtyper.Type | null = null
-			if(Tsc.isComputedPropertyName(member.name) && Tsc.isIdentifier(member.name.expression)){
-				let type = this.tricks.checker.getTypeAtLocation(member.name.expression)
-				if(!type.isStringLiteral()){
-					throw new Error("Computed property name is not string literal: " + member.getText())
-				}
-				propObj = varProps
-				hasVarProp = true
-				let symbol = this.tricks.checker.getSymbolAtLocation(member.name.expression)
-				let decls = symbol?.declarations || []
-				let decl = decls[0]!
-				if(decls.length !== 1 || (!Tsc.isVariableDeclaration(decl) && !Tsc.isBindingElement(decl)) || !Tsc.isIdentifier(decl.name)){
-					propType = this.fail("More than one declaration of key variable: ", member)
-					propName = this.tricks.propertyNameToString(member.name) || member.name.getText()
-				} else {
-					propName = this.nameOfNode(decl.name)
-				}
-			} else {
-				propObj = props
-				propName = this.tricks.propertyNameToString(member.name) || member.name.getText()
-			}
-
-			return {propObj, propName, propType}
-		}
 
 		for(let member of node.members){
 			if(Tsc.isIndexSignatureDeclaration(member)){
@@ -438,7 +402,7 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 				let param = member.parameters[0]!
 				let keyType = param.type
 				if(!keyType){
-					return this.fail("Index signatures must have explicit type: ", member)
+					return this.fail("No explicit index signature type: ", member)
 				}
 				let keyTypeDescr = this.describeType(keyType)
 				if(keyTypeDescr.type !== "string" && keyTypeDescr.type !== "number"){
@@ -456,28 +420,14 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 
 			if(Tsc.isPropertySignature(member)){
 				if(!member.type){
-					return this.fail("Expected all object properties to be explicitly typed, but this is not: ", member)
+					return this.fail("No explicit member signature type: ", member)
 				}
-				let {propObj, propName, propType} = determinePropNameObjMbType(member)
+				let propName = this.tricks.propertyNameToString(member.name) || member.name.getText()
 
-				propObj[propName] = propType || {
+				props[propName] = {
 					...this.describeType(member.type),
 					...(member.questionToken ? {optional: true} : {})
 				}
-				continue
-			}
-
-			if(Tsc.isMethodSignature(member)){
-				let {propObj, propName, propType} = determinePropNameObjMbType(member)
-				propObj[propName] = propType || {
-					...this.describeCallSignature(member),
-					...(member.questionToken ? {optional: true} : {})
-				}
-				continue
-			}
-
-			if(Tsc.isCallSignatureDeclaration(member)){
-				callSignatures.push(this.describeCallSignature(member))
 				continue
 			}
 
@@ -486,10 +436,8 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 		return {
 			type: "object",
 			properties: props,
-			...(hasVarProp ? {propertyByConstKeys: varProps} : {}),
-			...(index ? {index} : {}),
-			...(callSignatures.length > 0 ? {callSignatures} : {})
-		}
+			...(index ? {index} : {})
+		} as Runtyper.ObjectType
 	}
 
 	private describeTupleType(node: Tsc.TupleTypeNode): Runtyper.Type {
@@ -578,7 +526,7 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 		}
 
 		if(Tsc.isEnumDeclaration(decl)){
-			return {type: "reference", name: this.nameOfNode(decl.name)}
+			return {type: "type_reference", name: this.nameOfNode(decl.name)}
 		}
 
 		let typeArguments = (reference.typeArguments || []).map(typeArg => {
@@ -590,28 +538,37 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 		})
 		if(Tsc.isInterfaceDeclaration(decl) || Tsc.isTypeAliasDeclaration(decl) || Tsc.isClassDeclaration(decl)){
 			return {
-				type: "reference",
+				type: "type_reference",
 				name: this.nameOfNode(decl),
 				...(typeArguments.length > 0 ? {typeArguments} : {})
 			}
 		}
 
 		if(Tsc.isImportSpecifier(decl)){
-			let modSpec = decl.parent.parent.parent.moduleSpecifier
-			if(!Tsc.isStringLiteral(modSpec)){
-				return this.fail("Module specifier is not string literal: ", modSpec)
+			let importDescr = this.describeImportSpecifierSource(decl)
+			if(typeof(importDescr) !== "string"){
+				return importDescr
 			}
-			let rawModName = modSpec.text
-			let fullModName = this.tricks.modulePathResolver.resolveModuleDesignator(rawModName, this.sourceFile.fileName)
-			let origName = decl.propertyName || decl.name
 			return {
-				type: "reference",
-				name: this.nameOfModuleAndIdentifiers(fullModName, [origName]),
+				type: "type_reference",
+				name: importDescr,
 				...(typeArguments.length > 0 ? {typeArguments} : {})
 			}
 		}
 
 		return this.fail("Can't understand type of declaration: ", decl)
+	}
+
+
+	describeImportSpecifierSource(decl: Tsc.ImportSpecifier): string | Runtyper.IllegalType {
+		let modSpec = decl.parent.parent.parent.moduleSpecifier
+		if(!Tsc.isStringLiteral(modSpec)){
+			return this.fail("Module specifier is not string literal: ", modSpec)
+		}
+		let rawModName = modSpec.text
+		let fullModName = this.tricks.modulePathResolver.resolveModuleDesignator(rawModName, this.file.fileName)
+		let origName = decl.propertyName || decl.name
+		return this.nameOfModuleAndIdentifiers(fullModName, [origName])
 	}
 
 	// this function partially copies describeReferencedDeclarationType

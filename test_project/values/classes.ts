@@ -1,27 +1,7 @@
-/* eslint-disable @typescript-eslint/explicit-module-boundary-types */
-export interface MeowingThing {
-	meow(name: string): string
-}
-
-class ProtoClass {
-	protoName = "protoVasya"
-}
-
-export class MyClass extends ProtoClass implements MeowingThing {
-	static clsStaticMember = 5
-
-	name = "vasya"
-
-	constructor(readonly whoopsie?: number) {
-		super()
-	}
+export class MyClass {
 
 	woof(count: number): string {
 		return new Array(count + 1).join("woof")
-	}
-
-	meow(name) {
-		return name + " meow!"
 	}
 
 	moo(): string
@@ -30,19 +10,4 @@ export class MyClass extends ProtoClass implements MeowingThing {
 		return count === undefined ? "moo!" : ["moo", "moo"]
 	}
 
-}
-
-export let myClassInstance = new MyClass(111)
-
-export type MyClsStaticField = typeof MyClass.clsStaticMember
-export type MyClsInstanceFieldA = typeof myClassInstance.name
-export type MyClsInstanceFieldB = typeof myClassInstance.whoopsie
-export type MyClsInstanceFieldC = typeof myClassInstance.protoName
-
-// yes, this class WILL produce bad type structures
-// not much I can/want/know to do about this
-export class Itrbl implements Iterable<null> {
-	[Symbol.iterator](): never {
-		throw new Error("nope")
-	}
 }
