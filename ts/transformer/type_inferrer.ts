@@ -204,9 +204,9 @@ export class TypeInferrer extends TypeDescriberBase {
 	}
 
 	private inferCallExpressionType(expr: Tsc.CallExpression): Runtyper.Type {
-		if(!Tsc.isIdentifier(expr.expression)){
-			return this.fail("Call expression base is not identifier, cannot infer type: ", expr)
-		}
+		// if(!Tsc.isIdentifier(expr.expression)){
+		// 	return this.fail("Call expression base is not identifier, cannot infer type: ", expr)
+		// }
 
 		let symbol = this.tricks.checker.getSymbolAtLocation(expr.expression)
 		if(!symbol){

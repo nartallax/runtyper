@@ -40,9 +40,12 @@ test("main test", async assert => {
 		assert(producedJs).equalsTo(ethalonJS)
 	}
 
-	["array", "conditional_types", "constant_types", "destructurizing", "enums", "fields_and_dtos", "infer", "inheritance", "mapped_types_and_indexed_access", "other_module_type_ref", "recursive_type", "simple", "tricky_property_names", "tuples", "typeof", "union_intersection"]
-		.forEach(name => assertEthalonJs(["types", name]));
-	["classes", "exclamation_token", "functions", "namespaces", "tricky_imports"]
-		.forEach(name => assertEthalonJs(["values", name]))
+	for(let name of ["array", "conditional_types", "constant_types", "destructurizing", "enums", "fields_and_dtos", "infer", "inheritance", "mapped_types_and_indexed_access", "other_module_type_ref", "recursive_type", "simple", "tricky_property_names", "tuples", "typeof", "union_intersection"]){
+		await assertEthalonJs(["types", name])
+	}
+
+	for(let name of ["classes", "exclamation_token", "functions", "get_type", "namespaces", "tricky_imports"]){
+		await assertEthalonJs(["values", name])
+	}
 
 })

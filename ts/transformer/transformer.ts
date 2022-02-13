@@ -17,6 +17,42 @@ export class Transformer {
 	) {}
 
 	transform(file: Tsc.SourceFile): Tsc.SourceFile {
+		file = this.addTypeStructures(file)
+		file = this.substituteSpecialFunctions(file)
+		return file
+	}
+
+	private substituteSpecialFunctions(file: Tsc.SourceFile): Tsc.SourceFile {
+		let typeDescriber = new TypeNodeDescriber(this.tricks, file)
+
+		let visitor = (node: Tsc.Node): Tsc.Node => {
+			if(!Tsc.isCallExpression(node)){
+				return Tsc.visitEachChild(node, visitor, this.tricks.transformContext)
+			}
+			try {
+				typeDescriber.currentNode = node
+				let type = this.tricks.checker.getTypeAtLocation(node)
+				if(this.tricks.typeHasMarker(type, "RUNTYPER_THIS_IS_MARKER_INTERFACE_FOR_TYPE_INSTANCE")){
+					let typeStructure: Runtyper.Type
+					let genArg = (node.typeArguments || [])[0]
+					if(!genArg){
+						typeStructure = typeDescriber.fail("Cannot describe type for query: no generic argument: ", node)
+					} else {
+						typeStructure = typeDescriber.describeType(genArg)
+					}
+					return this.tricks.createLiteralOfValue(typeStructure)
+				}
+
+				return node
+			} finally {
+				typeDescriber.currentNode = null
+			}
+		}
+
+		return Tsc.visitEachChild(file, visitor, this.tricks.transformContext)
+	}
+
+	private addTypeStructures(file: Tsc.SourceFile): Tsc.SourceFile {
 		try {
 
 			let typeNodeDescriber = new TypeNodeDescriber(this.tricks, file)

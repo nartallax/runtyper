@@ -282,10 +282,14 @@ export namespace Runtyper {
 
 
 	/** Get description for type T
-	 * This function is never actually called; instead, it transformed to fetch type by name
-	 * T is referenced in return type just to make it "used" */
-	export function getType<T>(): Type & (RUNTYPER_THIS_IS_MARKER_INTERFACE_FOR_TYPE_INSTANCE | T) {
-		throw new Error("This function never meant to be actually executed! If you see this error, that means you broke the code (for example, passed this function around instead of just calling it), or never set up the transformer in the first place.")
+	 * This function is never actually called; instead, it transformed to fetch type by name */
+	export function getType<T>(): Type & RUNTYPER_THIS_IS_MARKER_INTERFACE_FOR_TYPE_INSTANCE {
+		throw new Error("This function never meant to be actually executed! If you see this error, that means you broke the code (for example, passed this function around instead of just calling it), or never set up the transformer in the first place.") as unknown as T // cast is just to get rid of unused notice
+	}
+
+	// eslint-disable-next-line @typescript-eslint/no-empty-interface
+	interface RUNTYPER_THIS_IS_MARKER_INTERFACE_FOR_TYPE_INSTANCE {
+		// it is left blank intentionally, as it is indeed marker interface
 	}
 
 	/** Build a function that will verify that value matches the type description.
@@ -301,16 +305,13 @@ export namespace Runtyper {
 	// export const finalize = runtime.finalize
 
 	/** Type information about interfaces and type aliases */
-	export const refTypes: ReadonlyMap<string, Type> = runtime.refTypes
-	export const functionsByName: ReadonlyMap<string, () => void> = runtime.functionsByName
+	// export const refTypes: ReadonlyMap<string, Type> = runtime.refTypes
+	// export const functionsByName: ReadonlyMap<string, () => void> = runtime.functionsByName
 	/** Type information about variables, constants, classes and their methods (outside of the functions) */
-	export const valueTypes: ReadonlyMap<string, Type> = runtime.valueTypes
+	// export const valueTypes: ReadonlyMap<string, Type> = runtime.valueTypes
 
-	// eslint-disable-next-line @typescript-eslint/no-empty-interface
-	interface RUNTYPER_THIS_IS_MARKER_INTERFACE_FOR_TYPE_INSTANCE {
-		// it is left blank intentionally, as it is indeed marker interface
-	}
-
+	/** Some internal functions.
+	 * Calls to those functions appear in generated code. You should never invoke them manually. */
 	export namespace internal {
 		export function t(pairs: [name: string, value: Runtyper.Type][]): void {
 			for(let [name, value] of pairs){
