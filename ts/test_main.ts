@@ -40,28 +40,9 @@ test("main test", async assert => {
 		assert(producedJs).equalsTo(ethalonJS)
 	}
 
-	let assertTypeJs = (name: string) => assertEthalonJs(["types", name])
-	let assertValueJs = (name: string) => assertEthalonJs(["values", name])
-
-	await assertTypeJs("simple")
-	await assertTypeJs("union_intersection")
-	await assertTypeJs("constant_types")
-	await assertTypeJs("mapped_types_and_indexed_access")
-	await assertTypeJs("inheritance")
-	await assertTypeJs("array")
-	await assertTypeJs("tuples")
-	await assertTypeJs("typeof")
-	await assertTypeJs("destructurizing")
-	await assertTypeJs("other_module_type_ref")
-	await assertTypeJs("conditional_types")
-	await assertTypeJs("infer")
-	await assertTypeJs("tricky_property_names")
-	await assertTypeJs("recursive_type")
-	await assertTypeJs("enums")
-	await assertValueJs("functions")
-	await assertValueJs("classes")
-	await assertValueJs("namespaces")
-	await assertValueJs("tricky_imports")
-	await assertValueJs("exclamation_token")
+	["array", "conditional_types", "constant_types", "destructurizing", "enums", "fields_and_dtos", "infer", "inheritance", "mapped_types_and_indexed_access", "other_module_type_ref", "recursive_type", "simple", "tricky_property_names", "tuples", "typeof", "union_intersection"]
+		.forEach(name => assertEthalonJs(["types", name]));
+	["classes", "exclamation_token", "functions", "namespaces", "tricky_imports"]
+		.forEach(name => assertEthalonJs(["values", name]))
 
 })
