@@ -197,7 +197,6 @@ class Scope {
 
 		if(signature.hasImplementation){
 			let path = this.tricks.getPathToNodeUpToLimit(nameNode, x => x === this.pathLimiter)
-			// TODO: tricky names in method identifier
 			this.functionsByName.add(name, path)
 		}
 	}

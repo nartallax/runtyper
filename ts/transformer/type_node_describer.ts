@@ -34,7 +34,6 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 					? this.fail("Class property has no explicit type: ", member)
 					: this.describeType(typeNode)
 
-				// TODO: does nodes in class gets named correctly? test for that
 				if(this.tricks.isNodeStatic(member)){
 					let name = this.nameOfNode(member)
 					staticProps[this.tricks.propertyNameToString(member.name) || member.name.getText()] = {

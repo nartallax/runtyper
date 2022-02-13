@@ -133,7 +133,6 @@ export class TypeInferrer extends TypeDescriberBase {
 		return preferConst ? {type: "constant", value: expr.text} : {type: "string"}
 	}
 
-	// TODO: destructurizing of another object here?
 	private inferObjectLiteralType(expr: Tsc.ObjectLiteralExpression): Runtyper.Type {
 		let props = {} as Record<string, Runtyper.ObjectPropertyType>
 

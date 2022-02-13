@@ -23,4 +23,3 @@ check all the TODOs
 // TODO: validator option to enum checking: just type string/number, or by value set
 // TODO: cleanup option after all the validators are built
 // TODO: getType() transform
-// TODO: test watchmode and adding new files

@@ -175,8 +175,7 @@ export class RuntyperTricks extends ToolboxTransformer.ToolboxTricks {
 				} else if(this.isNodeExported(node) && this.isNodeDefault(node)){
 					path.push(this.tsc.factory.createIdentifier("default")) // very special case
 				}
-				// TODO: remove function expression from here! otherwise variables will break naming
-			} else if(this.tsc.isFunctionDeclaration(node) || this.tsc.isFunctionExpression(node)){
+			} else if(this.tsc.isFunctionDeclaration(node)){
 				if(node.name){
 					path.push(node.name)
 				}
@@ -210,7 +209,8 @@ export class RuntyperTricks extends ToolboxTransformer.ToolboxTricks {
 					this.tsc.factory.createIdentifier(name.text)
 				)
 			} else if(this.tsc.isComputedPropertyName(name)){
-				// TODO: do I need to copy it? not sure
+				// I thought about copying the expression here, but found no obvious way to do so
+				// welp, hope it'll be alright to just reference it like that
 				result = this.tsc.factory.createElementAccessExpression(result, name.expression)
 			} else {
 				result = this.tsc.factory.createElementAccessExpression(result, name)
