@@ -103,6 +103,7 @@ export namespace Runtyper {
 	| InterfaceDeclaration
 	| AliasDeclaration
 	| EnumDeclaration
+	| NonNullExpressionType
 
 	export interface PrimitiveType {
 		readonly type: "string" | "number" | "boolean" | "any" | "unknown" | "never"
@@ -156,6 +157,12 @@ export namespace Runtyper {
 
 	export interface ArrayType {
 		readonly type: "array"
+		readonly valueType: Type
+	}
+
+	/** Expression of type `let x = (a as number | null)!` */
+	export interface NonNullExpressionType {
+		readonly type: "non_null"
 		readonly valueType: Type
 	}
 

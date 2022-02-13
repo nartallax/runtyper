@@ -27,7 +27,7 @@ export class TypeInferrer extends TypeDescriberBase {
 		if(Tsc.isAsExpression(expr)){
 			return this.inferAsExpression(expr)
 		} else if(Tsc.isParenthesizedExpression(expr)){
-			return this.inferExpressionType(expr.expression)
+			return this.inferExpressionType(expr.expression, preferConst)
 		} else if(Tsc.isNumericLiteral(expr)){
 			return this.inferNumericLiteralType(expr, preferConst)
 		} else if(Tsc.isStringLiteral(expr)){
@@ -42,8 +42,10 @@ export class TypeInferrer extends TypeDescriberBase {
 			return {type: "constant", value: undefined}
 		} else if(expr.kind === Tsc.SyntaxKind.NullKeyword){
 			return {type: "constant", value: null}
-		}	else if(Tsc.isPrefixUnaryExpression(expr)){
-			return this.inferPrefixUnaryExpression(expr, preferConst)
+		} else if(Tsc.isPrefixUnaryExpression(expr)){
+			return this.inferPrefixUnaryExpressionType(expr, preferConst)
+		} else if(Tsc.isNonNullExpression(expr)){
+			return this.inferNonNullExpressionType(expr, preferConst)
 		} else if(Tsc.isObjectLiteralExpression(expr)){
 			return this.inferObjectLiteralType(expr)
 		} else if(Tsc.isArrayLiteralExpression(expr)){
@@ -59,7 +61,7 @@ export class TypeInferrer extends TypeDescriberBase {
 		}
 	}
 
-	private inferPrefixUnaryExpression(expr: Tsc.PrefixUnaryExpression, preferConst: boolean): Runtyper.Type {
+	private inferPrefixUnaryExpressionType(expr: Tsc.PrefixUnaryExpression, preferConst: boolean): Runtyper.Type {
 		if(!preferConst){
 			return this.inferExpressionType(expr.operand)
 		} else {
@@ -71,6 +73,47 @@ export class TypeInferrer extends TypeDescriberBase {
 			} else {
 				return {type: "constant", value: -nestedType.value}
 			}
+		}
+	}
+
+	private inferNonNullExpressionType(expr: Tsc.NonNullExpression, preferConst: boolean): Runtyper.Type {
+		let type = this.inferExpressionType(expr.expression, preferConst)
+		if(type.type === "constant"){
+			if(type.value === null || type.value === undefined){
+				return {type: "never"}
+			} else {
+				return type
+			}
+		} else if(type.type === "constant_union"){
+			return this.clearConstantUnionOfNullUndefined(type)
+		} else if(type.type === "union"){
+			let types = [] as Runtyper.Type[]
+			for(let t of type.types){
+				if(t.type === "constant" && (t.value === undefined || t.value === null)){
+					continue // drop
+				} else if(t.type === "constant_union"){
+					let cleared = this.clearConstantUnionOfNullUndefined(t)
+					if(cleared.type !== "never"){
+						types.push(cleared)
+					}
+				} else {
+					types.push(t)
+				}
+			}
+			return {type: "union", types}
+		} else {
+			return {type: "non_null", valueType: type}
+		}
+	}
+
+	private clearConstantUnionOfNullUndefined(type: Runtyper.ConstantUnionType): Runtyper.Type {
+		let vals = type.value.filter(x => x !== undefined && x !== null)
+		if(vals.length === 0){
+			return {type: "never"}
+		} else if(vals.length === 1){
+			return {type: "constant", value: vals[0]!}
+		} else {
+			return {type: "constant_union", value: vals}
 		}
 	}
 

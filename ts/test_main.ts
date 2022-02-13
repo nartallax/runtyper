@@ -62,5 +62,6 @@ test("main test", async assert => {
 	await assertValueJs("classes")
 	await assertValueJs("namespaces")
 	await assertValueJs("tricky_imports")
+	await assertValueJs("exclamation_token")
 
 })
