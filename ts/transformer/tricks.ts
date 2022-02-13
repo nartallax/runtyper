@@ -237,4 +237,12 @@ export class RuntyperTricks extends ToolboxTransformer.ToolboxTricks {
 		return result.reverse()
 	}
 
+	functionDeclName(decl: Tsc.FunctionDeclaration): Tsc.Node {
+		let name = decl.name || decl.modifiers?.find(x => x.kind === this.tsc.SyntaxKind.DefaultKeyword)
+		if(!name){
+			throw new Error("Function declaration without name! How is this possible? " + decl.getText())
+		}
+		return name
+	}
+
 }

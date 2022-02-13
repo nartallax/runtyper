@@ -78,16 +78,8 @@ export class Transformer {
 			let vars = scope.describer.describeVariables(node)
 			scope.addVariables(vars)
 		} else if(Tsc.isFunctionDeclaration(node)){
-			let signature = scope.describer.describeMethodOrFunction(node)
-			if(!node.name){
-				throw new Error("Function declaration without name! How is this possible? " + node.getText())
-			}
-			let name = scope.describer.nameOfNode(node.name)
-			scope.addFunctionSignature(name, signature)
-			if(signature.hasImplementation){
-				let path = this.tricks.getPathToNodeUpToLimit(node.name, x => x === scope.pathLimiter)
-				scope.functionsByName.add(name, path)
-			}
+			let signature = scope.describer.describeCallSignature(node)
+			scope.addFunctionSignature(this.tricks.functionDeclName(node), signature)
 		} else if(Tsc.isClassDeclaration(node)){
 			let {cls, methods, variables} = scope.describer.describeClass(node)
 			if(!node.name){
@@ -102,13 +94,7 @@ export class Transformer {
 				scope.addVariables(variables)
 
 				methods.forEach(fn => {
-					let fnFullName = scope.describer.nameOfNode(fn.name)
-					scope.addFunctionSignature(fnFullName, fn.signature)
-					if(fn.hasImpl){
-						let path = this.tricks.getPathToNodeUpToLimit(fn.name, x => x === scope.pathLimiter)
-						// TODO: tricky names in method identifier
-						scope.functionsByName.add(fnFullName, path)
-					}
+					scope.addFunctionSignature(fn.name, fn.signature)
 				})
 			}
 		}
@@ -190,7 +176,10 @@ class Scope {
 	}
 
 
-	addFunctionSignature(name: string, signature: Runtyper.CallSignature) {
+	addFunctionSignature(nameNode: Tsc.Node, signature: Runtyper.CallSignature) {
+
+		let name = this.describer.nameOfNode(nameNode)
+
 		let funcDecl = this.valueTypes.get(name)
 		if(!funcDecl){
 			funcDecl = {type: "function", signatures: []}
@@ -205,6 +194,12 @@ class Scope {
 			...funcDecl,
 			signatures: [...funcDecl.signatures, signature]
 		})
+
+		if(signature.hasImplementation){
+			let path = this.tricks.getPathToNodeUpToLimit(nameNode, x => x === this.pathLimiter)
+			// TODO: tricky names in method identifier
+			this.functionsByName.add(name, path)
+		}
 	}
 
 	get pathLimiter(): Tsc.Node | undefined {

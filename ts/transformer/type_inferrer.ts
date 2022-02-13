@@ -23,9 +23,11 @@ export class TypeInferrer extends TypeDescriberBase {
 		}
 	}
 
-	protected inferExpressionType(expr: Tsc.Expression, preferConst = false): Runtyper.Type {
+	inferExpressionType(expr: Tsc.Expression, preferConst = false): Runtyper.Type {
 		if(Tsc.isAsExpression(expr)){
 			return this.inferAsExpression(expr)
+		} else if(Tsc.isParenthesizedExpression(expr)){
+			return this.inferExpressionType(expr.expression)
 		} else if(Tsc.isNumericLiteral(expr)){
 			return this.inferNumericLiteralType(expr, preferConst)
 		} else if(Tsc.isStringLiteral(expr)){
@@ -40,6 +42,8 @@ export class TypeInferrer extends TypeDescriberBase {
 			return {type: "constant", value: undefined}
 		} else if(expr.kind === Tsc.SyntaxKind.NullKeyword){
 			return {type: "constant", value: null}
+		}	else if(Tsc.isPrefixUnaryExpression(expr)){
+			return this.inferPrefixUnaryExpression(expr, preferConst)
 		} else if(Tsc.isObjectLiteralExpression(expr)){
 			return this.inferObjectLiteralType(expr)
 		} else if(Tsc.isArrayLiteralExpression(expr)){
@@ -48,13 +52,38 @@ export class TypeInferrer extends TypeDescriberBase {
 			return this.inferCallExpressionType(expr)
 		} else if(Tsc.isIdentifier(expr)){
 			return this.inferVariableExpressionType(expr)
+		} else if(Tsc.isArrowFunction(expr)){
+			return this.inferArrowFunctionType(expr)
 		} else {
 			return this.fail("Cannot infer type of expression: ", expr)
 		}
 	}
 
+	private inferPrefixUnaryExpression(expr: Tsc.PrefixUnaryExpression, preferConst: boolean): Runtyper.Type {
+		if(!preferConst){
+			return this.inferExpressionType(expr.operand)
+		} else {
+			let nestedType = this.inferExpressionType(expr.operand, true)
+			if(nestedType.type !== "constant" || typeof(nestedType.value) !== "number"){
+				return this.fail("Unary operators are only allowed on numeric constant types: ", expr)
+			} else if(expr.operator !== Tsc.SyntaxKind.MinusToken){
+				return this.fail("Only unary operator constant number type is allowed to have is minus, but this have something else: ", expr)
+			} else {
+				return {type: "constant", value: -nestedType.value}
+			}
+		}
+	}
+
 	private inferNumericLiteralType(expr: Tsc.NumericLiteral, preferConst: boolean): Runtyper.Type {
-		return preferConst ? {type: "constant", value: parseFloat(expr.text)} : {type: "number"}
+		if(preferConst){
+			let num = parseFloat(expr.text)
+			if(Number.isNaN(num)){
+				return this.fail("Failed to parse number value of numeric literal ", expr)
+			}
+			return {type: "constant", value: parseFloat(expr.text)}
+		} else {
+			return {type: "number"}
+		}
 	}
 
 	private inferStringLiteralType(expr: Tsc.StringLiteral, preferConst: boolean): Runtyper.Type {
@@ -189,6 +218,10 @@ export class TypeInferrer extends TypeDescriberBase {
 		} else {
 			return this.typeNodeDescriber.describeType(expr.type)
 		}
+	}
+
+	private inferArrowFunctionType(expr: Tsc.ArrowFunction): Runtyper.Type {
+		return {type: "function", signatures: [this.typeNodeDescriber.describeCallSignature(expr)]}
 	}
 
 }

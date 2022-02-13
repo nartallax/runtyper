@@ -12,7 +12,6 @@ export interface TypedVariable {
 export interface TypedFunction {
 	signature: Runtyper.CallSignature
 	name: Tsc.PropertyName
-	hasImpl: boolean
 }
 
 export class TypeNodeDescriber extends TypeDescriberBase {
@@ -68,13 +67,9 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 					}
 				})
 			} else if(Tsc.isMethodDeclaration(member)){
-				let signature = this.describeMethodOrFunction(member)
+				let signature = this.describeCallSignature(member)
 				let name = this.nameOfNode(member)
-				methodsArr.push({
-					name: member.name,
-					hasImpl: !!member.body,
-					signature
-				})
+				methodsArr.push({name: member.name, signature})
 				methods[this.tricks.propertyNameToString(member.name) || member.name.getText()] = {
 					functionName: name,
 					access: this.tricks.nodeAccessLevel(member),
@@ -117,12 +112,16 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 		return result
 	}
 
-	describeCallSignature(decl: Tsc.FunctionDeclaration | Tsc.CallSignatureDeclaration | Tsc.FunctionTypeNode | Tsc.MethodDeclaration | Tsc.MethodSignature): Runtyper.CallSignature {
+	describeCallSignature(decl: Tsc.FunctionDeclaration | Tsc.CallSignatureDeclaration | Tsc.FunctionTypeNode | Tsc.MethodDeclaration | Tsc.MethodSignature | Tsc.ArrowFunction): Runtyper.CallSignature {
 		let params = decl.parameters.map(param => {
 			let typeNode = param.type
 			let type: Runtyper.Type
 			if(!typeNode){
-				type = this.fail("No explicit function parameter type: ", param)
+				if(param.initializer){
+					type = this.makeInferrer().inferExpressionType(param.initializer)
+				} else {
+					type = this.fail("No explicit function parameter type: ", param)
+				}
 			} else {
 				type = this.describeType(typeNode)
 			}
@@ -141,19 +140,17 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 
 		let typeParams = this.describeTypeParameters(decl)
 
+		let hasImpl = Tsc.isMethodDeclaration(decl) || Tsc.isFunctionDeclaration(decl)
+			? !!decl.body
+			: Tsc.isArrowFunction(decl)
+				? true
+				: false
+
 		return {
-			type: "call_signature",
 			...(typeParams.length > 0 ? {typeParameters: typeParams} : {}),
 			...(params.length > 0 ? {parameters: params} : {}),
+			...(hasImpl ? {hasImplementation: true} : {}),
 			returnType: retType
-		}
-	}
-
-	describeMethodOrFunction(decl: Tsc.FunctionDeclaration | Tsc.MethodDeclaration): Runtyper.FunctionOverload {
-		let base = this.describeCallSignature(decl)
-		return {
-			...base,
-			...(decl.body ? {hasImplementation: true} : {})
 		}
 	}
 
@@ -243,7 +240,7 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 		if(Tsc.isParenthesizedTypeNode(node)){
 			return this.describeType(node.type)
 		} else if(Tsc.isLiteralTypeNode(node)){
-			return this.describeLiteralType(node)
+			return this.makeInferrer().inferExpressionType(node.literal, true)
 		} else if(node.kind === Tsc.SyntaxKind.NumberKeyword){
 			return {type: "number"}
 		} else if(node.kind === Tsc.SyntaxKind.StringKeyword){
@@ -293,30 +290,9 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 		} else if(Tsc.isConditionalTypeNode(node)){
 			return this.describeConditionalTypeNode(node)
 		} else if(Tsc.isFunctionTypeNode(node)){
-			return this.describeCallSignature(node)
+			return {type: "function", signatures: [this.describeCallSignature(node)]}
 		} else {
 			return this.fail("Cannot understand what this node is exactly: " + node.getText() + ", kind = " + Tsc.SyntaxKind[node.kind])
-		}
-	}
-
-	private describeLiteralType(node: Tsc.LiteralTypeNode): Runtyper.Type {
-		let literal = node.literal
-		if(Tsc.isStringLiteral(literal)){
-			return {type: "constant", value: literal.text}
-		} else if(Tsc.isNumericLiteral(literal)){
-			let num = parseFloat(literal.text)
-			if(Number.isNaN(num)){
-				return this.fail("Failed to parse number value of numeric literal ", node)
-			}
-			return {type: "constant", value: num}
-		} else if(literal.kind === Tsc.SyntaxKind.NullKeyword){
-			return {type: "constant", value: null}
-		} else if(literal.kind === Tsc.SyntaxKind.TrueKeyword){
-			return {type: "constant", value: true}
-		} else if(literal.kind === Tsc.SyntaxKind.FalseKeyword){
-			return {type: "constant", value: false}
-		} else {
-			return this.fail("Cannot understand type of literal type expression: ", node)
 		}
 	}
 
@@ -713,11 +689,25 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 		}
 		let decl = decls[0]!
 
-		if(!Tsc.isVariableDeclaration(decl) && !Tsc.isBindingElement(decl) && !Tsc.isPropertyDeclaration(decl) && !Tsc.isParameterPropertyDeclaration(decl, decl.parent)){
-			return this.fail("Cannot understand type of typeof target declaration: ", node)
+		let name: string
+		if(Tsc.isVariableDeclaration(decl) || Tsc.isBindingElement(decl) || Tsc.isPropertyDeclaration(decl) || Tsc.isParameterPropertyDeclaration(decl, decl.parent)){
+			name = this.nameOfNode(decl.name)
+		} else if(Tsc.isFunctionDeclaration(decl)){
+			name = this.nameOfNode(this.tricks.functionDeclName(decl))
+		} else if(Tsc.isImportSpecifier(decl)){
+			let src = this.describeImportSpecifierSource(decl)
+			if(typeof(src) !== "string"){
+				return src
+			}
+			name = src
+		} else if(Tsc.isNamespaceImport(decl)){
+			// some mad lad wrote `import * as m from "m"; type X = typeof m`
+			return this.fail("Typeof cannot target module objects: ", decl)
+		} else {
+			return this.fail("Cannot understand type of typeof target declaration: ", decl)
 		}
 
-		return {type: "value_reference", name: this.nameOfNode(decl.name)}
+		return {type: "value_reference", name}
 	}
 
 	private describeConditionalTypeNode(node: Tsc.ConditionalTypeNode): Runtyper.Type {

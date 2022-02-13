@@ -25,10 +25,15 @@ export namespace Runtyper {
 	}
 
 	export interface CallSignature {
-		readonly type: "call_signature"
 		readonly parameters?: Parameter[]
 		readonly returnType: Type
 		readonly typeParameters?: TypeParameter[]
+		// functions either have multiple overloads, and then one with implementation does not count in validation
+		// or does not have overloads, and then you should use the only overload to validate
+		// this property only means something of there is more than one signature
+		// in case there is only one, you should not rely on it
+		// (like, `let f: (x: number) => void = x => console.log(x)` won't be considered having implementation)
+		readonly hasImplementation?: boolean
 	}
 
 	export interface Parameter {
@@ -70,15 +75,9 @@ export namespace Runtyper {
 		readonly access: AccessLevel
 	}
 
-	export type FunctionOverload = (CallSignature & {
-		// functions either have multiple overloads, and then one with implementation does not count in validation
-		// or does not have overloads, and then you should use the only overload to validate
-		readonly hasImplementation?: boolean
-	})
-
 	export interface Function {
 		readonly type: "function"
-		readonly signatures: readonly FunctionOverload[]
+		readonly signatures: readonly CallSignature[]
 	}
 
 	export type Type = PrimitiveType
@@ -99,7 +98,6 @@ export namespace Runtyper {
 	| IndexAccessType
 	| TypeofType
 	| ConditionalType
-	| CallSignature
 	| Runtyper.Function
 	| Runtyper.Class
 	| InterfaceDeclaration
