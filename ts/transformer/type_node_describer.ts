@@ -129,7 +129,7 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 				...(Tsc.isIdentifier(param.name) ? {name: param.name.text} : {}),
 				valueType: type,
 				...(param.questionToken || param.initializer ? {optional: true} : {})
-			} as Runtyper.Parameter
+			} as Runtyper.FunctionParameter
 		})
 
 		let retTypeNode = decl.type

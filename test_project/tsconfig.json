@@ -8,6 +8,7 @@
         "entryFunction": "main",
         "outFile": "js/bundle.js",
         "target": "es2018",
+        "preventModuleTreePruning": true,
         "profiles": {
             "development": {
                 "watchMode": true,

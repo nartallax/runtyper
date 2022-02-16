@@ -3,7 +3,7 @@ import {RuntyperTricks} from "transformer/tricks"
 import {TypeDescriberBase} from "transformer/type_describer_base"
 import {TypeNodeDescriber} from "transformer/type_node_describer"
 import * as Tsc from "typescript"
-import {deepEquals} from "utils"
+import {applyNonNull, deepEquals} from "utils"
 
 export class TypeInferrer extends TypeDescriberBase {
 
@@ -78,44 +78,45 @@ export class TypeInferrer extends TypeDescriberBase {
 
 	private inferNonNullExpressionType(expr: Tsc.NonNullExpression, preferConst: boolean): Runtyper.Type {
 		let type = this.inferExpressionType(expr.expression, preferConst)
-		if(type.type === "constant"){
-			if(type.value === null || type.value === undefined){
-				return {type: "never"}
-			} else {
-				return type
-			}
-		} else if(type.type === "constant_union"){
-			return this.clearConstantUnionOfNullUndefined(type)
-		} else if(type.type === "union"){
-			let types = [] as Runtyper.Type[]
-			for(let t of type.types){
-				if(t.type === "constant" && (t.value === undefined || t.value === null)){
-					continue // drop
-				} else if(t.type === "constant_union"){
-					let cleared = this.clearConstantUnionOfNullUndefined(t)
-					if(cleared.type !== "never"){
-						types.push(cleared)
-					}
-				} else {
-					types.push(t)
-				}
-			}
-			return {type: "union", types}
-		} else {
-			return {type: "non_null", valueType: type}
-		}
+		// if(type.type === "constant"){
+		// 	if(type.value === null || type.value === undefined){
+		// 		return {type: "never"}
+		// 	} else {
+		// 		return type
+		// 	}
+		// } else if(type.type === "constant_union"){
+		// 	return this.clearConstantUnionOfNullUndefined(type)
+		// } else if(type.type === "union"){
+		// 	let types = [] as Runtyper.Type[]
+		// 	for(let t of type.types){
+		// 		if(t.type === "constant" && (t.value === undefined || t.value === null)){
+		// 			continue // drop
+		// 		} else if(t.type === "constant_union"){
+		// 			let cleared = this.clearConstantUnionOfNullUndefined(t)
+		// 			if(cleared.type !== "never"){
+		// 				types.push(cleared)
+		// 			}
+		// 		} else {
+		// 			types.push(t)
+		// 		}
+		// 	}
+		// 	return types.length > 1 ? {type: "union", types} : types.length === 1 ? types[0]! : {type: "never"}
+		// } else {
+		// 	return {type: "non_null", valueType: type}
+		// }
+		return applyNonNull(type, {type: "non_null", valueType: type})
 	}
 
-	private clearConstantUnionOfNullUndefined(type: Runtyper.ConstantUnionType): Runtyper.Type {
-		let vals = type.value.filter(x => x !== undefined && x !== null)
-		if(vals.length === 0){
-			return {type: "never"}
-		} else if(vals.length === 1){
-			return {type: "constant", value: vals[0]!}
-		} else {
-			return {type: "constant_union", value: vals}
-		}
-	}
+	// private clearConstantUnionOfNullUndefined(type: Runtyper.ConstantUnionType): Runtyper.Type {
+	// 	let vals = type.value.filter(x => x !== undefined && x !== null)
+	// 	if(vals.length === 0){
+	// 		return {type: "never"}
+	// 	} else if(vals.length === 1){
+	// 		return {type: "constant", value: vals[0]!}
+	// 	} else {
+	// 		return {type: "constant_union", value: vals}
+	// 	}
+	// }
 
 	private inferNumericLiteralType(expr: Tsc.NumericLiteral, preferConst: boolean): Runtyper.Type {
 		if(preferConst){
@@ -204,10 +205,6 @@ export class TypeInferrer extends TypeDescriberBase {
 	}
 
 	private inferCallExpressionType(expr: Tsc.CallExpression): Runtyper.Type {
-		// if(!Tsc.isIdentifier(expr.expression)){
-		// 	return this.fail("Call expression base is not identifier, cannot infer type: ", expr)
-		// }
-
 		let symbol = this.tricks.checker.getSymbolAtLocation(expr.expression)
 		if(!symbol){
 			return this.fail("Call expression base has no symbol: ", expr)

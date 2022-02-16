@@ -80,3 +80,20 @@ export type NamedDestrX = typeof NamedTypedDestruct.x
 export type NamedDestrY = typeof NamedTypedDestruct.y
 export type NamedDestrZ = typeof NamedTypedDestruct.z
 export type NamedDestrA = typeof NamedTypedDestruct.p
+
+// export namespace RestTuples {
+// 	export const [a, b, ...c] = null as unknown as [number, ...number[], string]
+// 	export const [x, y, ...z] = null as unknown as [number, number, string, ...number[], boolean]
+// 	// WHY c IS ARRAY AND z IS TUPLE? I DONT UNDERSTAND
+// 	export const [d, e, f] = [undefined, 1, 2, 3, 4] as [string?, ...number[]]
+// }
+
+// export type RestTupleA = typeof RestTuples.a
+// export type RestTupleB = typeof RestTuples.b
+// export type RestTupleC = typeof RestTuples.c
+// export type RestTupleD = typeof RestTuples.d
+// export type RestTupleE = typeof RestTuples.e
+// export type RestTupleF = typeof RestTuples.f
+// export type RestTupleX = typeof RestTuples.x
+// export type RestTupleY = typeof RestTuples.y
+// export type RestTupleZ = typeof RestTuples.z
