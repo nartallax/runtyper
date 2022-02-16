@@ -54,6 +54,18 @@ export interface X<Y>{
 	z: {i: {j: {[k in keyof Y]: number}}}
 }
 
+export type XPoint = X<Point>
+
 export type XX<Y> = {
 	[k in keyof Y]: {z: {i: {j: Y[k]}}}
 }
+
+export type XXPoint = XX<OptionalCopy<Point>>
+
+interface PointWithOpt {
+	z?: number
+}
+
+export type ZOfPoint = PointWithOpt["z"]
+
+export type OptCopiedPoint = OptionalCopy<Point>

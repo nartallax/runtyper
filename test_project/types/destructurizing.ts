@@ -17,8 +17,12 @@ export type TypeFromArrayDestr1 = typeof ArrayWithExplicitType.d
 
 namespace ArrayWithoutExplicitType {
 	export const [c, d] = [1, "f"]
+	export let [a, b] = [false, null]
+	export let h = [false, null]
 }
 export type TypeFromArrayDestr2 = typeof ArrayWithoutExplicitType.c
+export type TypeFromArrayDestr3 = typeof ArrayWithoutExplicitType.b
+export type TypeFromArrayDestr4 = typeof ArrayWithoutExplicitType.h
 
 namespace ObjectRenamingAtDestructurization {
 	export const {a: aaa, b: {c: ccc}} = {a: 5, b: {c: 10}}

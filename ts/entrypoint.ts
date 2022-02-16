@@ -3,6 +3,7 @@ import * as runtime from "runtime/runtime"
 import * as Tsc from "typescript"
 import {RuntyperTricks} from "transformer/tricks"
 import {Transformer, TransParams} from "transformer/transformer"
+import {TypeSimplifier} from "runtime/type_simplifier"
 
 export namespace Runtyper {
 
@@ -77,6 +78,8 @@ export namespace Runtyper {
 			}
 		}
 	}
+
+	export const simplifier = new TypeSimplifier()
 
 }
 
@@ -201,9 +204,9 @@ export namespace Runtyper {
 	 * Introduced to make checks more optimized, and also to reduce generated code size
 	 * That is, it's very easy to produce large constant union types,
 	 * but storing each of them as individual type is just bad */
-	export interface ConstantUnionType {
+	export interface ConstantUnionType<T = ConstantType["value"]> {
 		readonly type: "constant_union"
-		readonly value: readonly ConstantType["value"][]
+		readonly value: readonly T[]
 	}
 
 	/** A reference for type that is not placed literally in the code, but instead placed as a name, definition of which resides somewhere else.
@@ -243,19 +246,23 @@ export namespace Runtyper {
 		readonly valueType: Type
 	}
 
-	export type ObjectPropertyType<T = Type> = T & {readonly optional?: true}
+	export type ObjectIndexKeyBasicType = {type: "string" | "number"} | ConstantUnionType<number | string> | ConstantType
+	export type ObjectIndexKeyType = ObjectIndexKeyBasicType | UnionType<ObjectIndexKeyBasicType>
+
+	export type ObjectPropertyType = Type & {readonly optional?: true}
 	export interface ObjectIndexType<T = Type> {
-		readonly keyType: T
+		readonly keyType: ObjectIndexKeyType
 		readonly valueType: T
 	}
 
 	export interface SimpleObjectType<T = Type> {
 		readonly type: "object"
-		readonly properties: {readonly [propertyName: string]: ObjectPropertyType<T>}
+		readonly properties: {readonly [propertyName: string]: T}
 		readonly index?: ObjectIndexType<T>
 	}
 
 	export interface ObjectType extends SimpleObjectType {
+		readonly properties: {readonly [propertyName: string]: ObjectPropertyType}
 		// properties that are declared like `[constStringValue]: 12345`
 		// they need separate key array, because we should never copy type of the key
 		// (as it may be not in the same file)

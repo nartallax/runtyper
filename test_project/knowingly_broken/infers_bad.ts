@@ -18,13 +18,12 @@ export type ThisShouldBeAorB = BinSomethingLikeA<{valueA: {valueB: "a" | "b"}}>
 
 
 interface OptValue<T> {
-	value?: string | T | null
+	value: string | T | null
 }
 
 export type IsOptVal<T> = T extends OptValue<infer Z>? Z: never
 
 export type ThisShouldBeNull = IsOptVal<{value: null}>
-export type ThisShouldBeNullOrUndef = IsOptVal<{value?: null}>
 export type ThisShouldBeNullOrString = IsOptVal<{value: null | string}>
 export type ThisShouldBeBoolean = IsOptVal<{value: null | string | boolean}>
 
@@ -58,4 +57,16 @@ interface BBB<Z>{
 	valueZ: Z
 }
 export type AAorBBBArg<X> = X extends AA<infer T> | BBB<infer Z>? T & Z: never
-export type ASDASD = AAorBBBArg<BBB<number> | AA<string>>
+
+export interface OptValueNoUnion<V>{
+	value?: V
+}
+export type OptValArg<T> = T extends OptValueNoUnion<infer V>? V: never
+export type ThisShouldBeBoolean4 = OptValArg<{value: boolean}>
+
+
+interface NotOptValueYesUnion<V>{
+	value: V | null
+}
+export type OptValArg2<T> = T extends NotOptValueYesUnion<infer V>? V: never
+export type ThisShouldBeBoolean5 = OptValArg2<{value: boolean}>

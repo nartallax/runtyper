@@ -2,6 +2,7 @@ import {test} from "@nartallax/clamsensor"
 import {Imploder} from "@nartallax/imploder"
 import {promises as Fs} from "fs"
 import * as Path from "path"
+import * as ChildProcess from "child_process"
 
 /*
 async function fileExists(path: string): Promise<boolean> {
@@ -23,6 +24,14 @@ test("main test", async assert => {
 	let outDir = Path.resolve("./test_project/js/main")
 	let ethalonJsDir = Path.resolve("./test_project/ethalon_js")
 	await Fs.rm(outDir, {recursive: true, force: true})
+
+	try {
+		await Fs.mkdir("./test_project/node_modules/runtyper")
+	} catch(e){
+		// nothing
+	}
+	await Fs.copyFile("./target/runtyper.d.ts", "./test_project/node_modules/runtyper/runtyper.d.ts")
+	await Fs.copyFile("./target/runtyper.js", "./test_project/node_modules/runtyper/runtyper.js")
 
 	let context = await Imploder.runFromTsconfig("./test_project/tsconfig.json")
 	if(!context.compiler.lastBuildWasSuccessful){
@@ -48,4 +57,22 @@ test("main test", async assert => {
 		await assertEthalonJs(["values", name])
 	}
 
+	let {exitCode} = await runWithResult(process.argv0, [context.config.outFile])
+	assert(exitCode).equalsTo(0)
 })
+
+function runWithResult(cmd: string, args: string[]): Promise<{exitCode: number | NodeJS.Signals | null}> {
+	return new Promise((ok, bad) => {
+		try {
+			let process = ChildProcess.spawn(
+				cmd, args, {
+					stdio: "inherit"
+				}
+			)
+			process.on("error", e => bad(e))
+			process.on("exit", (code, signal) => ok({exitCode: code === null ? signal : code}))
+		} catch(e){
+			bad(e)
+		}
+	})
+}

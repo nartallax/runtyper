@@ -8,12 +8,12 @@ export type DtoByFields<T> = {[P in keyof T]: FieldType<T[P]>}
 
 export function textField(params: {label: string}): FieldDefinition<string> {
 	void params
-	throw new Error("Not implemented")
+	return {defaultValue: ""}
 }
 
 export function dateField(params: {label: string}): FieldDefinition<number> {
 	void params
-	throw new Error("Not implemented")
+	return {defaultValue: 0}
 }
 
 export const CarFields = {

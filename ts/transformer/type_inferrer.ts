@@ -3,7 +3,7 @@ import {RuntyperTricks} from "transformer/tricks"
 import {TypeDescriberBase} from "transformer/type_describer_base"
 import {TypeNodeDescriber} from "transformer/type_node_describer"
 import * as Tsc from "typescript"
-import {applyNonNull, deepEquals} from "utils"
+import {deepEquals} from "utils"
 
 export class TypeInferrer extends TypeDescriberBase {
 
@@ -17,17 +17,18 @@ export class TypeInferrer extends TypeDescriberBase {
 
 	inferVariableDeclarationType(decl: Tsc.VariableDeclaration, preferConst: boolean): Runtyper.Type {
 		if(decl.initializer){
-			return this.inferExpressionType(decl.initializer, preferConst)
+			let hasDestructurization = !Tsc.isIdentifier(decl.name)
+			return this.inferExpressionType(decl.initializer, preferConst, hasDestructurization)
 		} else {
 			return this.fail("Cannot infer variable declaration type: no initializer: ", decl)
 		}
 	}
 
-	inferExpressionType(expr: Tsc.Expression, preferConst = false): Runtyper.Type {
+	inferExpressionType(expr: Tsc.Expression, preferConst = false, hasDestructurization = false): Runtyper.Type {
 		if(Tsc.isAsExpression(expr)){
 			return this.inferAsExpression(expr)
 		} else if(Tsc.isParenthesizedExpression(expr)){
-			return this.inferExpressionType(expr.expression, preferConst)
+			return this.inferExpressionType(expr.expression, preferConst, hasDestructurization)
 		} else if(Tsc.isNumericLiteral(expr)){
 			return this.inferNumericLiteralType(expr, preferConst)
 		} else if(Tsc.isStringLiteral(expr)){
@@ -45,11 +46,11 @@ export class TypeInferrer extends TypeDescriberBase {
 		} else if(Tsc.isPrefixUnaryExpression(expr)){
 			return this.inferPrefixUnaryExpressionType(expr, preferConst)
 		} else if(Tsc.isNonNullExpression(expr)){
-			return this.inferNonNullExpressionType(expr, preferConst)
+			return this.inferNonNullExpressionType(expr, preferConst, hasDestructurization)
 		} else if(Tsc.isObjectLiteralExpression(expr)){
-			return this.inferObjectLiteralType(expr)
+			return this.inferObjectLiteralType(expr, hasDestructurization)
 		} else if(Tsc.isArrayLiteralExpression(expr)){
-			return this.inferArrayLiteralExpressionType(expr)
+			return this.inferArrayLiteralExpressionType(expr, hasDestructurization)
 		} else if(Tsc.isCallExpression(expr)){
 			return this.inferCallExpressionType(expr)
 		} else if(Tsc.isIdentifier(expr)){
@@ -76,8 +77,8 @@ export class TypeInferrer extends TypeDescriberBase {
 		}
 	}
 
-	private inferNonNullExpressionType(expr: Tsc.NonNullExpression, preferConst: boolean): Runtyper.Type {
-		let type = this.inferExpressionType(expr.expression, preferConst)
+	private inferNonNullExpressionType(expr: Tsc.NonNullExpression, preferConst: boolean, hasDestructurization = false): Runtyper.Type {
+		let type = this.inferExpressionType(expr.expression, preferConst, hasDestructurization)
 		// if(type.type === "constant"){
 		// 	if(type.value === null || type.value === undefined){
 		// 		return {type: "never"}
@@ -104,7 +105,7 @@ export class TypeInferrer extends TypeDescriberBase {
 		// } else {
 		// 	return {type: "non_null", valueType: type}
 		// }
-		return applyNonNull(type, {type: "non_null", valueType: type})
+		return {type: "non_null", valueType: type}
 	}
 
 	// private clearConstantUnionOfNullUndefined(type: Runtyper.ConstantUnionType): Runtyper.Type {
@@ -134,14 +135,14 @@ export class TypeInferrer extends TypeDescriberBase {
 		return preferConst ? {type: "constant", value: expr.text} : {type: "string"}
 	}
 
-	private inferObjectLiteralType(expr: Tsc.ObjectLiteralExpression): Runtyper.Type {
+	private inferObjectLiteralType(expr: Tsc.ObjectLiteralExpression, hasDestructurization = false): Runtyper.Type {
 		let props = {} as Record<string, Runtyper.ObjectPropertyType>
 
 		for(let prop of expr.properties){
 			if(Tsc.isPropertyAssignment(prop)){
 				let name = this.tricks.propertyNameToString(prop.name) || prop.name.getText()
 				props[name] = {
-					...this.inferExpressionType(prop.initializer),
+					...this.inferExpressionType(prop.initializer, false, hasDestructurization),
 					...(prop.questionToken ? {optional: true} : {})
 				}
 				continue
@@ -156,7 +157,10 @@ export class TypeInferrer extends TypeDescriberBase {
 		}
 	}
 
-	private inferArrayLiteralExpressionType(expr: Tsc.ArrayLiteralExpression): Runtyper.Type {
+	private inferArrayLiteralExpressionType(expr: Tsc.ArrayLiteralExpression, hasDestructurization = false): Runtyper.Type {
+		if(hasDestructurization){
+			return this.fail("when the variable is destructurized, array value may or may not infer to a tuple type; therefore, accurate type inferrence is not supported: ", expr)
+		}
 		let valueTypes = expr.elements.map(el => this.inferExpressionType(el))
 
 		if(valueTypes.length === 0){

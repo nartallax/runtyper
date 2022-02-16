@@ -26,27 +26,26 @@ export class Transformer {
 		let typeDescriber = new TypeNodeDescriber(this.tricks, file)
 
 		let visitor = (node: Tsc.Node): Tsc.Node => {
-			if(!Tsc.isCallExpression(node)){
-				return Tsc.visitEachChild(node, visitor, this.tricks.transformContext)
-			}
-			try {
-				typeDescriber.currentNode = node
-				let type = this.tricks.checker.getTypeAtLocation(node)
-				if(this.tricks.typeHasMarker(type, "RUNTYPER_THIS_IS_MARKER_INTERFACE_FOR_TYPE_INSTANCE")){
-					let typeStructure: Runtyper.Type
-					let genArg = (node.typeArguments || [])[0]
-					if(!genArg){
-						typeStructure = typeDescriber.fail("Cannot describe type for query: no generic argument: ", node)
-					} else {
-						typeStructure = typeDescriber.describeType(genArg)
+			if(Tsc.isCallExpression(node)){
+				try {
+					typeDescriber.currentNode = node
+					let type = this.tricks.checker.getTypeAtLocation(node)
+					if(this.tricks.typeHasMarker(type, "RUNTYPER_THIS_IS_MARKER_INTERFACE_FOR_TYPE_INSTANCE")){
+						let typeStructure: Runtyper.Type
+						let genArg = (node.typeArguments || [])[0]
+						if(!genArg){
+							typeStructure = typeDescriber.fail("Cannot describe type for query: no generic argument: ", node)
+						} else {
+							typeStructure = typeDescriber.describeType(genArg)
+						}
+						return this.tricks.createLiteralOfValue(typeStructure)
 					}
-					return this.tricks.createLiteralOfValue(typeStructure)
+				} finally {
+					typeDescriber.currentNode = null
 				}
-
-				return node
-			} finally {
-				typeDescriber.currentNode = null
 			}
+
+			return Tsc.visitEachChild(node, visitor, this.tricks.transformContext)
 		}
 
 		return Tsc.visitEachChild(file, visitor, this.tricks.transformContext)

@@ -1,4 +1,5 @@
 import {Runtyper} from "entrypoint"
+import {isObjectIndexKeyType} from "simple_type_utils"
 import {DestructVariable} from "transformer/tricks"
 import {TypeDescriberBase} from "transformer/type_describer_base"
 import {TypeInferrer} from "transformer/type_inferrer"
@@ -380,16 +381,12 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 					return this.fail("No explicit index signature type: ", member)
 				}
 				let keyTypeDescr = this.describeType(keyType)
-				if(keyTypeDescr.type !== "string" && keyTypeDescr.type !== "number"){
-					if(keyTypeDescr.type !== "union"
-					|| keyTypeDescr.types.length !== 2
-					|| !keyTypeDescr.types.find(x => x.type === "number")
-					|| !keyTypeDescr.types.find(x => x.type === "string")){
-						return this.fail("Only string or number index is allowed: ", member)
-					}
-				}
 				let valueTypeDescr = this.describeType(member.type)
-				index = {keyType: keyTypeDescr, valueType: valueTypeDescr}
+				if(isObjectIndexKeyType(keyTypeDescr)){
+					index = {keyType: keyTypeDescr, valueType: valueTypeDescr}
+				} else {
+					return this.fail("Cannot describe index of object: only string/number type and string/number constants are allowed: ", keyType)
+				}
 				continue
 			}
 

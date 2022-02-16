@@ -13,7 +13,7 @@ export interface C extends B {
 type Wrap<T> = {value: T}
 
 interface WrapWithName<T> extends Wrap<T> {
-	name: string
+	name?: string
 }
 
 export interface WrappedNamedNumber extends WrapWithName<number>{

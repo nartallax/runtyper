@@ -42,7 +42,10 @@ export abstract class NodeableUniqMap<K, V> {
 			factory.createCallExpression(
 				factory.createPropertyAccessExpression(
 					factory.createPropertyAccessExpression(
-						factory.createIdentifier(importName),
+						factory.createPropertyAccessExpression(
+							factory.createIdentifier(importName),
+							factory.createIdentifier("Runtyper")
+						),
 						factory.createIdentifier("internal")
 					),
 					factory.createIdentifier(this.fnName)
