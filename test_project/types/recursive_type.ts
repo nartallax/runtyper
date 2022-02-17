@@ -18,3 +18,6 @@ interface LinkNodeOf<ChildNode> {
 }
 
 export type LinkChain = LinkNodeOf<LinkNodeOf<LinkNodeOf<string>>>
+
+export type Printer<T> = {printedValue: T}
+export type DivPrinter = Printer<Div>

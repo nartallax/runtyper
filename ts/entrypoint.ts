@@ -259,6 +259,11 @@ export namespace Runtyper {
 		readonly type: "object"
 		readonly properties: {readonly [propertyName: string]: T}
 		readonly index?: ObjectIndexType<T>
+		/** If the object is product of type/value reference, then this field will be filled with the full reference name
+		 * Makes generated code more readable */
+		readonly refName?: string
+		/** Origin module name. */
+		readonly moduleName?: string
 	}
 
 	export interface ObjectType extends SimpleObjectType {

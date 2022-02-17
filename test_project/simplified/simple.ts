@@ -4,7 +4,7 @@ import {MyString, Point, SimpleNS} from "types/simple"
 
 simplifiedTests.push([
 	Runtyper.getType<Point>(),
-	{type: "object", properties: {x: {type: "number"}, y: {type: "number"}, z: {type: "union", types: [{type: "number"}, {type: "constant", value: undefined}]}}}
+	{type: "object", properties: {x: {type: "number"}, y: {type: "number"}, z: {type: "union", types: [{type: "number"}, {type: "constant", value: undefined}]}}, refName: "Point", moduleName: "/types/simple"}
 ])
 
 simplifiedTests.push([

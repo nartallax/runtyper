@@ -4,5 +4,5 @@ import {NamedZ} from "types/conditional_types"
 
 simplifiedTests.push([
 	Runtyper.getType<NamedZ>(),
-	{type: "object", properties: {z: {type: "number"}, name: {type: "string"}}}
+	{type: "object", properties: {z: {type: "number"}, name: {type: "string"}}, refName: "NamedZ", moduleName: "/types/conditional_types"}
 ])

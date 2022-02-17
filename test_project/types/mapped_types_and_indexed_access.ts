@@ -69,3 +69,8 @@ interface PointWithOpt {
 export type ZOfPoint = PointWithOpt["z"]
 
 export type OptCopiedPoint = OptionalCopy<Point>
+
+export type A<T> = {a: T}
+export type B<T> = {b: T}
+export type C = A<number> | B<string>
+export const constFromMappedTypeFile: A<string> = {a: ""}

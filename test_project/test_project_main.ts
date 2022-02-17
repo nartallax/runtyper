@@ -3,36 +3,43 @@ import {Runtyper} from "runtyper/runtyper"
 export const simplifiedTests = [] as [Runtyper.Type, (Runtyper.SimpleType | string)][]
 
 export function main(): void {
+	let failedCount = 0
 	for(let [srcType, result] of simplifiedTests){
 		// console.log("running simplification test: ", srcType)
 		try {
 			let simplifiedStructure = Runtyper.simplifier.simplify(srcType)
 			// console.dir(simplifiedStructure, {depth: null})
-			void JSON.stringify(simplifiedStructure) // to check on recursive types
+			try {
+				void JSON.stringify(simplifiedStructure) // to check on recursive types
+			} catch(e){
+				throw new Error("This structure is not JSONable.")
+			}
+
 			if(!deepEquals(result, simplifiedStructure)){
-				console.error("Simplification test failed:")
+				console.error("\nSimplification test failed:")
 				console.error("source: " + JSON.stringify(srcType))
 				console.error("expected: " + JSON.stringify(result))
 				console.error("got: " + JSON.stringify(simplifiedStructure))
-				process.exit(1)
+				failedCount++
 			}
 		} catch(e){
 			if(!(e instanceof Error) || typeof(result) !== "string"){
-				console.error("Simplification test failed:")
+				console.error("\nSimplification test failed:")
 				console.error("source: " + JSON.stringify(srcType))
 				console.error("stack: " + (e as Error).stack)
-				process.exit(1)
-			}
-			if(e.message.indexOf(result) < 0){
-				console.error("Simplification test failed:")
+				failedCount++
+			} else if(e.message.indexOf(result) < 0){
+				console.error("\nSimplification test failed:")
 				console.error("source: " + JSON.stringify(srcType))
 				console.error("expected error text: " + result)
 				console.error("got error text: " + e.message)
 				console.error("stack: " + e.stack)
-				process.exit(1)
+				failedCount++
 			}
 		}
 	}
+
+	process.exit(failedCount === 0 ? 0 : 1)
 }
 
 

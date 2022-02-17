@@ -1,57 +1,67 @@
-// import {Runtyper} from "entrypoint"
-// import {valueTypes} from "runtime/runtime"
+import {Runtyper} from "entrypoint"
 
-// function constantValueToString(v: Runtyper.ConstantType["value"]): string {
-// 	if(v === true || v === false || v === null || v === undefined || typeof(v) === "number"){
-// 		return v + ""
-// 	} else {
-// 		return JSON.stringify(v)
-// 	}
-// }
+function constantValueToString(v: Runtyper.ConstantType["value"]): string {
+	if(v === true || v === false || v === null || v === undefined || typeof(v) === "number"){
+		return v + ""
+	} else {
+		return JSON.stringify(v)
+	}
+}
 
-// function genArgsToString(args?: (Runtyper.Type | Runtyper.InferType)[]): string {
-// 	if(!args || args.length === 0){
-// 		return ""
-// 	}
-// 	return "<" + args.map(arg => {
-// 		if(arg.type === "infer"){
-// 			return "infer " + arg.name
-// 		} else {
-// 			return typeToString(arg)
-// 		}
-// 	}) + ">"
-// }
+export function isValidIdentifier(name: string): boolean {
+	return !!name.match(/[a-zA-Z_][a-zA-Z\d_]*/)
+}
 
-// export function typeToString(type: Runtyper.Type): string {
+export function simpleTypeToString(type: Runtyper.SimpleType, includeModuleName: boolean): string {
 
-// 	switch(type.type){
-// 		case "broken": return "<broken type: " + type.message + ">"
-// 		case "constant": return constantValueToString(type.value)
-// 		case "constant_union": return "(" + type.value.map(x => constantValueToString(x)).join(" | ") + ")"
-// 		case "string": return "string"
-// 		case "number": return "number"
-// 		case "boolean": return "boolean"
-// 		case "any": return "any"
-// 		case "unknown": return "unknown"
-// 		case "never": return "never"
-// 		case "array": return "(" + typeToString(type.valueType) + ")[]"
-// 		case "tuple": return "[" + type.valueTypes.map(x => {
-// 			if(x.type === "rest"){
-// 				return "..." + typeToString(x.valueType)
-// 			} else {
-// 				return typeToString(x)
-// 			}
-// 		}).join(", ") + "]"
-// 		case "call_result_reference": return "(typeof " + type.functionName + "(???))"
-// 		case "value_reference": return "(typeof " + type.name + ")"
-// 		case "type_reference": return type.name + genArgsToString(type.typeArguments)
-// 		case "generic_parameter": return type.name
-// 		case "conditional": return typeToString(type.checkType) + " extends " + typeToString(type.extendsType) + " ? " + typeToString(type.trueType) + " : " + typeToString(type.falseType)
-// 		case "enum": return "enum <name unknown> { <value names also not known>: " + JSON.stringify(valueTypes) + " }"
-// 		case "object":
-// 			let result = "{"
+	switch(type.type){
+		case "constant": return constantValueToString(type.value)
+		case "constant_union": return "(" + type.value.map(x => constantValueToString(x)).join(" | ") + ")"
+		case "string": return "string"
+		case "number": return "number"
+		case "boolean": return "boolean"
+		case "any": return "any"
+		case "unknown": return "unknown"
+		case "never": return "never"
+		case "array": return "(" + simpleTypeToString(type.valueType, includeModuleName) + ")[]"
+		case "tuple": return "[" + type.valueTypes.map(x => {
+			if(x.type === "rest"){
+				return "..." + simpleTypeToString(x.valueType, includeModuleName)
+			} else {
+				return simpleTypeToString(x, includeModuleName)
+			}
+		}).join(", ") + "]"
+		case "object":{
+			if(type.refName){
+				return type.refName
+			}
+			let result = "{"
+			let hasProps = false
+			for(let propName in type.properties){
+				if(hasProps){
+					result += ", "
+				}
+				hasProps = true
+				if(isValidIdentifier(propName)){
+					result += propName + ": "
+				} else {
+					result += "[" + JSON.stringify(propName) + "]: "
+				}
 
-// 			return result + "}"
-// 	}
+				result += simpleTypeToString(type.properties[propName]!, includeModuleName)
+			}
 
-// }
+			if(type.index){
+				if(hasProps){
+					result += "; "
+				}
+				result += "[k: " + simpleTypeToString(type.index.keyType, includeModuleName) + "]: " + simpleTypeToString(type.index.valueType, includeModuleName)
+			}
+
+			return result + "}"
+		}
+		case "union": return "(" + type.types.map(x => simpleTypeToString(x, includeModuleName)).join(" | ") + ")"
+		case "intersection": return "(" + type.types.map(x => simpleTypeToString(x, includeModuleName)).join(" & ") + ")"
+	}
+
+}
