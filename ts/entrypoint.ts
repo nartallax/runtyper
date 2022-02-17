@@ -262,8 +262,9 @@ export namespace Runtyper {
 		/** If the object is product of type/value reference, then this field will be filled with the full reference name
 		 * Makes generated code more readable */
 		readonly refName?: string
-		/** Origin module name. */
-		readonly moduleName?: string
+		/** Same as refName, just with more info.
+		 * Thought to be unique (two objects with same fullRefName should be actually the same) */
+		readonly fullRefName?: string
 	}
 
 	export interface ObjectType extends SimpleObjectType {

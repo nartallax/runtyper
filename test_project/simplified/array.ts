@@ -24,5 +24,5 @@ simplifiedTests.push([
 
 simplifiedTests.push([
 	Runtyper.getType<MyArr5>(),
-	{type: "object", properties: {}, refName: "MyArr5", moduleName: "/types/array", index: {keyType: {type: "union", types: [{type: "string"}, {type: "number"}]}, valueType: {type: "number"}}}
+	{type: "object", properties: {}, refName: "MyArr5", fullRefName: "/types/array:MyArr5", index: {keyType: {type: "union", types: [{type: "string"}, {type: "number"}]}, valueType: {type: "number"}}}
 ])

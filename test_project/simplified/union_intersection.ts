@@ -24,18 +24,17 @@ simplifiedTests.push([
 
 simplifiedTests.push([
 	Runtyper.getType<ManyMath>(),
-	{type: "intersection", types: [{type: "object", properties: {x: {type: "number"}, z: {type: "number"}}, refName: "MathProblem", moduleName: "/types/union_intersection"}, {type: "object", properties: {x: {type: "number"}, y: {type: "number"}}, refName: "Point", moduleName: "/types/union_intersection"}]}
-
+	{type: "intersection", types: [{type: "object", properties: {x: {type: "number"}, z: {type: "number"}}, refName: "MathProblem", fullRefName: "/types/union_intersection:MathProblem"}, {type: "object", properties: {x: {type: "number"}, y: {type: "number"}}, refName: "Point", fullRefName: "/types/union_intersection:Point"}]}
 ])
 
 simplifiedTests.push([
 	Runtyper.getType<MathAndName>(),
-	{type: "intersection", types: [{type: "union", types: [{type: "object", properties: {x: {type: "number"}, z: {type: "number"}}, refName: "MathProblem", moduleName: "/types/union_intersection"}, {type: "object", properties: {x: {type: "number"}, y: {type: "number"}}, refName: "Point", moduleName: "/types/union_intersection"}]}, {type: "object", properties: {name: {type: "string"}}}]}
+	{type: "intersection", types: [{type: "union", types: [{type: "object", properties: {x: {type: "number"}, z: {type: "number"}}, refName: "MathProblem", fullRefName: "/types/union_intersection:MathProblem"}, {type: "object", properties: {x: {type: "number"}, y: {type: "number"}}, refName: "Point", fullRefName: "/types/union_intersection:Point"}]}, {type: "object", properties: {name: {type: "string"}}}]}
 ])
 
 simplifiedTests.push([
 	Runtyper.getType<MathAndSomethingElseWithDefault>(),
-	{type: "intersection", types: [{type: "object", properties: {x: {type: "number"}, y: {type: "number"}}, refName: "Point", moduleName: "/types/union_intersection"}, {type: "object", properties: {x: {type: "number"}, z: {type: "number"}}, refName: "MathProblem", moduleName: "/types/union_intersection"}]}
+	{type: "intersection", types: [{type: "object", properties: {x: {type: "number"}, y: {type: "number"}}, refName: "Point", fullRefName: "/types/union_intersection:Point"}, {type: "object", properties: {x: {type: "number"}, z: {type: "number"}}, refName: "MathProblem", fullRefName: "/types/union_intersection:MathProblem"}]}
 ])
 
 

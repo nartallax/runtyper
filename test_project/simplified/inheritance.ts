@@ -4,11 +4,11 @@ import {NameWithValue, WrappedNamedNumber} from "types/inheritance"
 
 simplifiedTests.push([
 	Runtyper.getType<WrappedNamedNumber>(),
-	{type: "object", properties: {value: {type: "number"}, name: {type: "union", types: [{type: "string"}, {type: "constant", value: undefined}]}, isNumber: {type: "constant", value: true}}, refName: "WrappedNamedNumber", moduleName: "/types/inheritance"}
+	{type: "object", properties: {value: {type: "number"}, name: {type: "union", types: [{type: "string"}, {type: "constant", value: undefined}]}, isNumber: {type: "constant", value: true}}, refName: "WrappedNamedNumber", fullRefName: "/types/inheritance:WrappedNamedNumber"}
 ])
 
 simplifiedTests.push([
 	Runtyper.getType<NameWithValue>(),
-	{type: "object", properties: {name: {type: "string"}, value: {type: "string"}, isNameWithValue: {type: "constant", value: true}}, index: {keyType: {type: "string"}, valueType: {type: "union", types: [{type: "string"}, {type: "boolean"}]}}, refName: "NameWithValue", moduleName: "/types/inheritance"}
+	{type: "object", properties: {name: {type: "string"}, value: {type: "string"}, isNameWithValue: {type: "constant", value: true}}, index: {keyType: {type: "string"}, valueType: {type: "union", types: [{type: "string"}, {type: "boolean"}]}}, refName: "NameWithValue", fullRefName: "/types/inheritance:NameWithValue"}
 
 ])

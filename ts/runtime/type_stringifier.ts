@@ -12,7 +12,7 @@ export function isValidIdentifier(name: string): boolean {
 	return !!name.match(/[a-zA-Z_][a-zA-Z\d_]*/)
 }
 
-export function simpleTypeToString(type: Runtyper.SimpleType, includeModuleName: boolean): string {
+export function simpleTypeToString(type: Runtyper.SimpleType, useFullNames: boolean): string {
 
 	switch(type.type){
 		case "constant": return constantValueToString(type.value)
@@ -23,16 +23,18 @@ export function simpleTypeToString(type: Runtyper.SimpleType, includeModuleName:
 		case "any": return "any"
 		case "unknown": return "unknown"
 		case "never": return "never"
-		case "array": return "(" + simpleTypeToString(type.valueType, includeModuleName) + ")[]"
+		case "array": return "(" + simpleTypeToString(type.valueType, useFullNames) + ")[]"
 		case "tuple": return "[" + type.valueTypes.map(x => {
 			if(x.type === "rest"){
-				return "..." + simpleTypeToString(x.valueType, includeModuleName)
+				return "..." + simpleTypeToString(x.valueType, useFullNames)
 			} else {
-				return simpleTypeToString(x, includeModuleName)
+				return simpleTypeToString(x, useFullNames)
 			}
 		}).join(", ") + "]"
 		case "object":{
-			if(type.refName){
+			if(useFullNames && type.fullRefName){
+				return type.fullRefName
+			} else if(type.refName){
 				return type.refName
 			}
 			let result = "{"
@@ -48,20 +50,20 @@ export function simpleTypeToString(type: Runtyper.SimpleType, includeModuleName:
 					result += "[" + JSON.stringify(propName) + "]: "
 				}
 
-				result += simpleTypeToString(type.properties[propName]!, includeModuleName)
+				result += simpleTypeToString(type.properties[propName]!, useFullNames)
 			}
 
 			if(type.index){
 				if(hasProps){
 					result += "; "
 				}
-				result += "[k: " + simpleTypeToString(type.index.keyType, includeModuleName) + "]: " + simpleTypeToString(type.index.valueType, includeModuleName)
+				result += "[k: " + simpleTypeToString(type.index.keyType, useFullNames) + "]: " + simpleTypeToString(type.index.valueType, useFullNames)
 			}
 
 			return result + "}"
 		}
-		case "union": return "(" + type.types.map(x => simpleTypeToString(x, includeModuleName)).join(" | ") + ")"
-		case "intersection": return "(" + type.types.map(x => simpleTypeToString(x, includeModuleName)).join(" & ") + ")"
+		case "union": return "(" + type.types.map(x => simpleTypeToString(x, useFullNames)).join(" | ") + ")"
+		case "intersection": return "(" + type.types.map(x => simpleTypeToString(x, useFullNames)).join(" & ") + ")"
 	}
 
 }

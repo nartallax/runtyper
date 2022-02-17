@@ -11,4 +11,4 @@ simplifiedTests.push([Runtyper.getType<MixedTypeD>(), "when the variable is dest
 simplifiedTests.push([Runtyper.getType<RestZ>(), "when the variable is destructurized, array value may or may not infer to a tuple type"])
 
 simplifiedTests.push([Runtyper.getType<NamedDestrX>(), {type: "number"}])
-simplifiedTests.push([Runtyper.getType<NamedDestrA>(), {type: "object", properties: {x: {type: "number"}, y: {type: "number"}}, refName: "NamedDestrA", moduleName: "/types/destructurizing"}])
+simplifiedTests.push([Runtyper.getType<NamedDestrA>(), {type: "object", properties: {x: {type: "number"}, y: {type: "number"}}, refName: "NamedDestrA", fullRefName: "/types/destructurizing:NamedDestrA"}])

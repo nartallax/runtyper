@@ -26,7 +26,7 @@ simplifiedTests.push([
 
 simplifiedTests.push([
 	Runtyper.getType<LinkChain>(),
-	{type: "object", properties: {next: {type: "object", properties: {next: {type: "object", properties: {next: {type: "string"}}, refName: "LinkNodeOf<string>", moduleName: "/types/recursive_type"}}, refName: "LinkNodeOf<LinkNodeOf<string>>", moduleName: "/types/recursive_type"}}, refName: "LinkChain", moduleName: "/types/recursive_type"}
+	{type: "object", properties: {next: {type: "object", properties: {next: {type: "object", properties: {next: {type: "string"}}, refName: "LinkNodeOf<string>", fullRefName: "/types/recursive_type:LinkNodeOf<string>"}}, refName: "LinkNodeOf<LinkNodeOf<string>>", fullRefName: "/types/recursive_type:LinkNodeOf</types/recursive_type:LinkNodeOf<string>>"}}, refName: "LinkChain", fullRefName: "/types/recursive_type:LinkChain"}
 
 ])
 

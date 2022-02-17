@@ -24,7 +24,7 @@ simplifiedTests.push([
 
 simplifiedTests.push([
 	Runtyper.getType<BigObjTypeof>(),
-	{type: "object", properties: {a: {type: "number"}, b: {type: "number"}, z: {type: "object", properties: {y: {type: "object", properties: {x: {type: "array", valueType: {type: "number"}}}}}}}, moduleName: "/types/typeof", refName: "BigObjTypeof"}
+	{type: "object", properties: {a: {type: "number"}, b: {type: "number"}, z: {type: "object", properties: {y: {type: "object", properties: {x: {type: "array", valueType: {type: "number"}}}}}}}, fullRefName: "/types/typeof:BigObjTypeof", refName: "BigObjTypeof"}
 ])
 
 simplifiedTests.push([

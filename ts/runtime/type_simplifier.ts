@@ -12,13 +12,12 @@ interface MutableObjectType {
 	properties: Record<string, Runtyper.SimpleType>
 	index?: Runtyper.ObjectIndexType<Runtyper.SimpleType>
 	refName?: string
-	moduleName?: string
+	fullRefName?: string
 }
 
 interface RefInfo {
 	fullRefName: string
 	refName: string
-	moduleName: string
 }
 
 export class TypeSimplifier {
@@ -69,11 +68,6 @@ export class TypeSimplifier {
 		return refName
 	}
 
-	private getModuleName(ref: Runtyper.TypeReferenceType): string {
-		let parts = ref.name.split(":")
-		return parts.slice(0, -1).join(":")
-	}
-
 	private cachedSimplifyReference(reference: Runtyper.TypeReferenceType, genArgs: GenArgs, throwOnCircular: boolean): Runtyper.SimpleType {
 		let targetType = refTypes.get(reference.name)
 		if(!targetType){
@@ -96,8 +90,7 @@ export class TypeSimplifier {
 				}
 				let refInfo: RefInfo = {
 					fullRefName: fullName,
-					refName: this.makeRefName(reference, targetType, genArgs, false),
-					moduleName: this.getModuleName(reference)
+					refName: this.makeRefName(reference, targetType, genArgs, false)
 				}
 				this.currentlyDefiningRefTypeValues.set(fullName, this.makeFreshMutableObject(refInfo))
 				try {
@@ -133,7 +126,7 @@ export class TypeSimplifier {
 			type: "object",
 			properties: {},
 			refName: ref.refName,
-			moduleName: ref.moduleName
+			fullRefName: ref.fullRefName
 		}
 	}
 
@@ -236,7 +229,7 @@ export class TypeSimplifier {
 				if(result.type === "object" && ref){
 					result = {
 						...result,
-						moduleName: ref.moduleName,
+						fullRefName: ref.fullRefName,
 						refName: ref.refName
 					}
 				}
@@ -328,7 +321,7 @@ export class TypeSimplifier {
 					type: "object",
 					properties: props,
 					...(index ? {index} : {}),
-					...(ref ? {moduleName: ref.moduleName, refName: ref.refName} : {})
+					...(ref ? {fullRefName: ref.fullRefName, refName: ref.refName} : {})
 				}
 			}
 			case "object": return this.simplifyObject(type, genArgs, ref)
@@ -362,7 +355,7 @@ export class TypeSimplifier {
 					properties: props,
 					...(index ? {index} : {}),
 					...(terminalObject.refName ? {refName: terminalObject.refName} : {}),
-					...(terminalObject.moduleName ? {moduleName: terminalObject.moduleName} : {})
+					...(terminalObject.fullRefName ? {fullRefName: terminalObject.fullRefName} : {})
 				}
 			}
 
