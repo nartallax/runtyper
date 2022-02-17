@@ -11,6 +11,8 @@ why types inferred the way they are
 
 module pruning
 
+optional === undefined
+
 TBD
 
 generic parameters of functions? what types will be returned? what validator will be built?
@@ -22,7 +24,5 @@ check all the TODOs
 // TODO: validator option to allow/disallow extra data on objects, and dont forget about indexed/mapped types
 // TODO: validator option to enum checking: just type string/number, or by value set
 // TODO: cleanup option after all the validators are built
-change transformer type to "program" in test tsconfig
 more tests for relative relations of unknown, never and any (infer, intersection, union)
-docs about optional === undefined
 post-simplification processing (updating the union types?)

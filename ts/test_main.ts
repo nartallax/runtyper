@@ -26,7 +26,7 @@ test("main test", async assert => {
 	await Fs.rm(outDir, {recursive: true, force: true})
 
 	try {
-		await Fs.mkdir("./test_project/node_modules/runtyper")
+		await Fs.mkdir("./test_project/node_modules/runtyper", {recursive: true})
 	} catch(e){
 		// nothing
 	}
