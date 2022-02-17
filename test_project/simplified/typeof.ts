@@ -4,7 +4,7 @@ import {BigObjTypeof, ConstTypeof, DestructuredVarType, NamespacedObjectType, Ob
 
 simplifiedTests.push([
 	Runtyper.getType<TupleTypeof>(),
-	"index types of tuples are not supported"
+	{type: "constant", value: "c"}
 ])
 
 simplifiedTests.push([

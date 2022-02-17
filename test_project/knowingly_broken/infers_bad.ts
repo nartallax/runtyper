@@ -35,7 +35,7 @@ export type ThisShouldBeBoolean = IsOptVal<{value: null | string | boolean}>
 
 // export type InferNoGenArg<T> = T extends NoGenArg<infer Z>? Z: null
 // export type ThisShouldBeUnknown = InferNoGenArg<{value: number}>
-// // TODO: imagine more complex examples of this
+// // imagine more complex examples of this
 // export type ThisShouldBeString3 = InferNoGenArg<NoGenArg<string>>
 
 

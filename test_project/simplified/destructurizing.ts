@@ -4,15 +4,11 @@ import {MixedTypeD, NamedDestrA, NamedDestrX, RenamedTypeC, RestZ, TypeFromArray
 
 simplifiedTests.push([Runtyper.getType<TypeFromObjDestr1>(), {type: "number"}])
 simplifiedTests.push([Runtyper.getType<TypeFromObjDestr2>(), {type: "number"}])
-simplifiedTests.push([Runtyper.getType<TypeFromArrayDestr1>(), "index types of tuples are not supported"])
+simplifiedTests.push([Runtyper.getType<TypeFromArrayDestr1>(), {type: "string"}])
 simplifiedTests.push([Runtyper.getType<TypeFromArrayDestr2>(), "when the variable is destructurized, array value may or may not infer to a tuple type"])
 simplifiedTests.push([Runtyper.getType<RenamedTypeC>(), {type: "number"}])
 simplifiedTests.push([Runtyper.getType<MixedTypeD>(), "when the variable is destructurized, array value may or may not infer to a tuple type"])
 simplifiedTests.push([Runtyper.getType<RestZ>(), "when the variable is destructurized, array value may or may not infer to a tuple type"])
-
-// simplifiedTests.push([Runtyper.getType<TypeFromArrayDestr1>(), {type: "string"}])
-// simplifiedTests.push([Runtyper.getType<TypeFromArrayDestr2>(), {type: "number"}])
-// TODO: after I fix tuple inferrence - more tests here
 
 simplifiedTests.push([Runtyper.getType<NamedDestrX>(), {type: "number"}])
 simplifiedTests.push([Runtyper.getType<NamedDestrA>(), {type: "object", properties: {x: {type: "number"}, y: {type: "number"}}}])

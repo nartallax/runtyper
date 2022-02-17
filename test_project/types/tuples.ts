@@ -7,3 +7,7 @@ export type Tuple6 = [number, number, ...string[], number]
 export type Tuple7 = [count: number, length: number]
 export type Tuple8 = [count?: number, length?: number, ...anythingElse: string[]]
 export type Tuple9 = [count?: number, length?: number, ...anythingElse: Array<string>]
+
+export type TupleVal1 = Tuple1[0]
+export type TupleVal2 = Tuple2[2]
+export type TupleVal3 = Tuple3[2]

@@ -178,21 +178,28 @@ export class TypeSimplifier {
 						return target.valueType
 					}
 				} else if(target.type === "tuple"){
-					// if(index.type !== "constant" || typeof(index.value) !== "number"){
-					// 	this.fail("expected index of tuple to be constant number: ", index)
-					// }
-					// let indexNum = index.value
-					// if(type.rest){
-					// 	let resultTypes = [] as Runtyper.SimpleType[]
-					// 	for(let i = indexNum; i < target.type.length; i++){
-					// 	}
-					// }
-
 					// look, this shit is hard, okay? and I doubt a lot of people use it
 					// so I'll just skip the implementation
 					// future me: look into destructurization tests, there are a lot of tricky examples
-					// TODO: implement index types for tuples
-					this.fail("index types of tuples are not supported: ", type)
+					if(type.rest){
+						this.fail("index access of tuples by rest notation is not supported: ", type)
+					}
+					if(target.valueTypes.find(x => x.type === "rest")){
+						this.fail("index access of tuples with rest notation is not supported: ", target)
+					}
+
+					if(index.type !== "constant" || typeof(index.value) !== "number"){
+						this.fail("expected index of tuple to be constant number: ", index)
+					}
+					let indexNum = index.value
+					if(indexNum >= target.valueTypes.length){
+						this.fail("cannot get type of tuple value at index " + indexNum + ": there are less values in tuple than that: ", target)
+					}
+					let valueType = target.valueTypes[indexNum]!
+					if(valueType.type === "rest"){
+						this.fail("should never happen, checked above")
+					}
+					return valueType
 				} else {
 					this.fail("index access type target is not of valid type: ", type)
 				}
@@ -754,41 +761,6 @@ export class TypeSimplifier {
 
 	appendConstToType(type: Runtyper.SimpleType, value: Runtyper.ConstantType["value"]): Runtyper.SimpleType {
 		return this.makeUnion([type, {type: "constant", value}])
-		// let constUnionValues: Runtyper.ConstantType["value"][]
-		// if(type.type === "never"){
-		// 	return {type: "constant", value}
-		// } else if(type.type === "any" || type.type === "unknown"){
-		// 	return type
-		// }
-		// // TODO: handle string constants being appended to "string" type and so on (or move it to type simplifier)
-		// if(type.type === "union"){
-		// 	let constUnion = type.types.find(x => x.type === "constant_union")
-		// 	if(constUnion){
-		// 		let otherTypes = type.types.filter(x => x !== constUnion)
-		// 		return {type: "union", types: [appendConstToType(constUnion, value), ...otherTypes]}
-		// 	} else {
-		// 		let cnst = type.types.find(x => x.type === "constant")
-		// 		if(cnst){
-		// 			let otherTypes = type.types.filter(x => x !== cnst)
-		// 			return {type: "union", types: [appendConstToType(cnst, value), ...otherTypes]}
-		// 		} else {
-		// 			return {type: "union", types: [{type: "constant", value}, ...type.types]}
-		// 		}
-		// 	}
-		// } else if(type.type === "constant_union"){
-		// 	constUnionValues = [value, ...type.value]
-		// } else if(type.type === "constant"){
-		// 	constUnionValues = [value, type.value]
-		// } else {
-		// 	return {type: "union", types: [{type: "constant", value}, type]}
-		// }
-
-		// constUnionValues = [...new Set(constUnionValues)].sort()
-		// if(constUnionValues.length === 1){
-		// 	return {type: "constant", value: constUnionValues[0]!}
-		// } else {
-		// 	return {type: "constant_union", value: constUnionValues}
-		// }
 	}
 
 }
