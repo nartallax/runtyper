@@ -23,11 +23,6 @@ check all the TODOs
 // TODO: validator option to enum checking: just type string/number, or by value set
 // TODO: cleanup option after all the validators are built
 rename illegal type to something more sound
-try recursive type expression that refers itself (not just interface)
-more tests for intersections
-more tests for unions (unknown/never, including constants and not constants)
-more tests for recusive types: recursive type in generic argument
-more tests for recusive types: recursive type as alias
 change transformer type to "program" in test tsconfig
 more tests for relative relations of unknown, never and any (infer, intersection, union)
 docs about optional === undefined

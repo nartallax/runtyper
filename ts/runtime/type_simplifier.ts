@@ -1,26 +1,34 @@
 import {Runtyper} from "entrypoint"
 import {refTypes, valueTypes} from "runtime/runtime"
-import {deepEquals, RoRecord} from "utils"
-import {forEachTerminalTypeInUnion, isObjectIndexKeyType, makeUnion, removeConstantFromType, removeTypesFromUnion} from "simple_type_utils"
+import {deepEquals, RoRecord} from "utils/utils"
+import {forEachTerminalTypeInUnion, isObjectIndexKeyType, makeUnion, removeConstantFromType, removeTypesFromUnion} from "utils/simple_type_utils"
 import {getInferredUnknownName, makeInferredUnknown} from "inferred_unknown"
 
 export type GenArgs = RoRecord<Runtyper.SimpleType>
 
+interface MutableObjectType {
+	type: "object"
+	properties: Record<string, Runtyper.SimpleType>
+	index?: Runtyper.ObjectIndexType<Runtyper.SimpleType>
+}
+
 export class TypeSimplifier {
 
 	private currentType: Runtyper.Type | null = null
-	private knownRefTypesCache = new Map<string, Runtyper.SimpleType>()
+	private readonly knownRefTypesCache = new Map<string, Runtyper.SimpleType>()
+	private readonly currentlyDefiningRefTypeValues = new Map<string, MutableObjectType>()
 
 	simplify(type: Runtyper.Type, genArgs: GenArgs = {}): Runtyper.SimpleType {
 		try {
 			this.currentType = type
-			return this.simplifyInternal(type, genArgs)
+			return this.simplifyInternal(type, genArgs, null)
 		} finally {
 			this.currentType = null
+			this.currentlyDefiningRefTypeValues.clear()
 		}
 	}
 
-	private cachedSimplifyReference(reference: Runtyper.TypeReferenceType, genArgs: GenArgs): Runtyper.SimpleType {
+	private cachedSimplifyReference(reference: Runtyper.TypeReferenceType, genArgs: GenArgs, throwOnCircular: boolean): Runtyper.SimpleType {
 		let targetType = refTypes.get(reference.name)
 		if(!targetType){
 			this.fail("cannot find referenced type by name: ", reference)
@@ -32,19 +40,34 @@ export class TypeSimplifier {
 			// we can maybe sometimes miss it with same type being referenced from different places, no big deal
 			let result = this.knownRefTypesCache.get(fullName)
 			if(!result){
-				result = this.simplifyInternal(targetType, genArgs)
-				this.knownRefTypesCache.set(fullName, result)
+				let definingValue = this.currentlyDefiningRefTypeValues.get(fullName)
+				if(definingValue){
+					if(throwOnCircular){
+						this.fail("this recursive type is too difficult to process: ", reference)
+					} else {
+						return definingValue
+					}
+				}
+				let obj: MutableObjectType = {type: "object", properties: {}}
+				this.currentlyDefiningRefTypeValues.set(fullName, obj)
+				try {
+					result = this.simplifyInternal(targetType, genArgs, fullName)
+					this.knownRefTypesCache.set(fullName, result)
+				} finally {
+					this.currentlyDefiningRefTypeValues.delete(fullName)
+				}
 			}
 			return result
 		} else if(targetType.type === "class" || targetType.type === "function"){
 			// these two types also have generic parameters, but I won't support them (at least right now)
 			this.fail("type reference cannot target class or function: ", reference)
 		} else {
-			return this.simplifyInternal(targetType, genArgs)
+			// what else we can even refer to?
+			return this.simplifyInternal(targetType, genArgs, null)
 		}
 	}
 
-	private simplifyInternal(type: Runtyper.Type, genArgs: GenArgs): Runtyper.SimpleType {
+	private simplifyInternal(type: Runtyper.Type, genArgs: GenArgs, fullRefName: string | null, throwOnCircular = false): Runtyper.SimpleType {
 		switch(type.type){
 			case "illegal":
 				this.fail("detected illegal type in file " + type.file + " when processing " + type.node + ": " + type.message)
@@ -58,7 +81,7 @@ export class TypeSimplifier {
 			case "constant":
 			case "constant_union": return type
 			case "enum": return {type: "constant_union", value: type.values}
-			case "type_reference": return this.cachedSimplifyReference(type, genArgs)
+			case "type_reference": return this.cachedSimplifyReference(type, genArgs, throwOnCircular)
 			case "generic_parameter":{
 				let argVal = genArgs[type.name]
 				if(!argVal){
@@ -71,7 +94,7 @@ export class TypeSimplifier {
 				if(!valType){
 					this.fail("type refers to value which is nowhere to be found: ", type)
 				}
-				return this.simplifyInternal(valType, genArgs)
+				return this.simplifyInternal(valType, genArgs, fullRefName)
 			}
 			case "call_result_reference":{
 				let valType = valueTypes.get(type.functionName)
@@ -85,36 +108,46 @@ export class TypeSimplifier {
 					this.fail("expected to have exactly one function signature! Can't resolve value of function that has more than one signature: ", valType)
 				}
 				let signature = valType.signatures[0]!
-				return this.simplifyInternal(signature.returnType, genArgs)
+				return this.simplifyInternal(signature.returnType, genArgs, fullRefName)
 			}
 			case "function": this.fail("cannot simplify function type: ", type)
 			// eslint-disable-next-line no-fallthrough
 			case "class": this.fail("cannot simplify class type: ", type)
 			// eslint-disable-next-line no-fallthrough
-			case "intersection": return this.simplifyIntersection(type, genArgs)
+			case "intersection": return this.simplifyIntersection(type, genArgs, fullRefName)
 			case "union":{
-				let types = type.types.map(type => this.simplifyInternal(type, genArgs))
+				let types = type.types.map(type => this.simplifyInternal(type, genArgs, fullRefName))
 				return this.makeUnion(types)
 			}
 			case "tuple":
 				return {type: "tuple", valueTypes: type.valueTypes.map(type => {
 					if(type.type === "rest"){
-						return {type: "rest", valueType: this.simplifyInternal(type.valueType, genArgs)}
+						return {type: "rest", valueType: this.simplifyInternal(type.valueType, genArgs, null)}
 					} else {
-						return this.simplifyInternal(type, genArgs)
+						let optional = type.optional
+						if(type.optional){
+							let x = {...type}
+							delete x.optional
+							type = x
+						}
+						let result = this.simplifyInternal(type, genArgs, null)
+						if(optional){
+							result = this.appendConstToType(result, undefined)
+						}
+						return result
 					}
 				})}
 			case "array":
-				return {type: "array", valueType: this.simplifyInternal(type.valueType, genArgs)}
+				return {type: "array", valueType: this.simplifyInternal(type.valueType, genArgs, null)}
 			case "non_null":{
-				let simplified = this.simplifyInternal(type.valueType, genArgs)
+				let simplified = this.simplifyInternal(type.valueType, genArgs, fullRefName)
 				return removeTypesFromUnion(
 					simplified,
 					type => type.type === "constant" && (type.value === null || type.value === undefined)
 				)
 			}
 			case "keyof":{
-				let target = this.simplifyInternal(type.target, genArgs)
+				let target = this.simplifyInternal(type.target, genArgs, null, true)
 				if(target.type !== "object"){
 					this.fail("target of keyof expression is not object: ", type)
 				}
@@ -125,10 +158,10 @@ export class TypeSimplifier {
 				}
 				return result
 			}
-			case "alias": return this.simplifyInternal(type.body, genArgs)
+			case "alias": return this.simplifyInternal(type.body, genArgs, fullRefName)
 			case "index_access":{
-				let target = this.simplifyInternal(type.object, genArgs)
-				let index = this.simplifyInternal(type.index, genArgs)
+				let target = this.simplifyInternal(type.object, genArgs, null, true)
+				let index = this.simplifyInternal(type.index, genArgs, null)
 				if(target.type === "object"){
 					let indexVal = index.type !== "constant" || typeof(index.value) !== "string" ? null : index.value
 					if(indexVal !== null && indexVal in target.properties){
@@ -168,13 +201,13 @@ export class TypeSimplifier {
 			case "mapped_type":{
 				let props = {} as Record<string, Runtyper.SimpleType>
 				let index = null as Runtyper.ObjectIndexType<Runtyper.SimpleType> | null
-				let keyType = this.simplifyInternal(type.keyType, genArgs)
+				let keyType = this.simplifyInternal(type.keyType, genArgs, null, true)
 				forEachTerminalTypeInUnion(keyType, keyTypePart => {
 					let argsWithKey: GenArgs = {
 						...genArgs,
 						[type.keyName]: keyTypePart
 					}
-					let partValueType = this.simplifyInternal(type.valueType, argsWithKey)
+					let partValueType = this.simplifyInternal(type.valueType, argsWithKey, null, true)
 					if(keyTypePart.type === "string"){
 						if(index){
 							this.fail("more than one index on object is not supported: ", type)
@@ -207,7 +240,7 @@ export class TypeSimplifier {
 					...(index ? {index} : {})
 				}
 			}
-			case "object": return this.simplifyObject(type, genArgs)
+			case "object": return this.simplifyObject(type, genArgs, fullRefName)
 			case "interface":{
 				let props = {} as Record<string, Runtyper.SimpleType>
 				let index = null as Runtyper.ObjectIndexType<Runtyper.SimpleType> | null
@@ -227,10 +260,10 @@ export class TypeSimplifier {
 
 				if(type.heritage){
 					for(let parentType of type.heritage){
-						blend(this.simplifyInternal(parentType, genArgs))
+						blend(this.simplifyInternal(parentType, genArgs, fullRefName))
 					}
 				}
-				blend(this.simplifyObject(type, genArgs))
+				blend(this.simplifyObject(type, genArgs, fullRefName))
 
 				return {
 					type: "object",
@@ -244,8 +277,8 @@ export class TypeSimplifier {
 					this.fail("conditional type expressions which checked types are not generic arguments are not supported: ", type)
 				}
 				let genName = type.checkType.name
-				let checkType = this.simplifyInternal(type.checkType, genArgs)
-				let simpleExtendsType = this.simplifyInternal(type.extendsType, genArgs)
+				let checkType = this.simplifyInternal(type.checkType, genArgs, fullRefName)
+				let simpleExtendsType = this.simplifyInternal(type.extendsType, genArgs, fullRefName)
 				let sourceInferNames = this.findSourceInfers(type)
 				if(sourceInferNames.length === 0 && simpleExtendsType.type === "constant_union"){
 					// simplified check for constant unions
@@ -258,7 +291,7 @@ export class TypeSimplifier {
 						} else {
 							branch = type.falseType
 						}
-						result.push(this.simplifyInternal(branch, {...genArgs, [genName]: subtype}))
+						result.push(this.simplifyInternal(branch, {...genArgs, [genName]: subtype}, fullRefName))
 					})
 					return this.makeUnion(result)
 				}
@@ -268,7 +301,7 @@ export class TypeSimplifier {
 					for(let name of sourceInferNames){
 						newArgs[name] = {type: "never"}
 					}
-					return this.simplifyInternal(type.falseType, {...genArgs, ...newArgs})
+					return this.simplifyInternal(type.falseType, {...genArgs, ...newArgs}, fullRefName)
 				} else {
 					let newArgs = {} as Record<string, Runtyper.SimpleType>
 					for(let name of sourceInferNames){
@@ -278,7 +311,7 @@ export class TypeSimplifier {
 						}
 						newArgs[name] = inferredType
 					}
-					return this.simplifyInternal(type.trueType, {...genArgs, ...newArgs})
+					return this.simplifyInternal(type.trueType, {...genArgs, ...newArgs}, fullRefName)
 				}
 			}
 		}
@@ -292,8 +325,11 @@ export class TypeSimplifier {
 		throw new Error(prefix + ": " + msg)
 	}
 
-	private simplifyObject(type: Runtyper.ObjectType | Runtyper.InterfaceDeclaration, genArgs: GenArgs): Runtyper.SimpleType {
-		let props = {} as Record<string, Runtyper.SimpleType>
+	private simplifyObject(type: Runtyper.ObjectType | Runtyper.InterfaceDeclaration, genArgs: GenArgs, fullRefName: string | null): Runtyper.SimpleObjectType<Runtyper.SimpleType> {
+		let result: MutableObjectType = (fullRefName ? this.currentlyDefiningRefTypeValues.get(fullRefName) : null) || {
+			type: "object",
+			properties: {}
+		}
 		for(let propName in type.properties){
 			let srcProp = type.properties[propName]!
 			let wasOptional = false
@@ -303,9 +339,9 @@ export class TypeSimplifier {
 				delete x.optional // otherwise optional will leak into SimpleType
 				srcProp = x
 			}
-			props[propName] = this.simplifyInternal(srcProp, genArgs)
+			result.properties[propName] = this.simplifyInternal(srcProp, genArgs, null)
 			if(wasOptional){
-				props[propName] = this.appendConstToType(props[propName]!, undefined)
+				result.properties[propName] = this.appendConstToType(result.properties[propName]!, undefined)
 			}
 		}
 		if(type.propertyByConstKeys){
@@ -317,18 +353,23 @@ export class TypeSimplifier {
 				if(valueType.type !== "constant" || typeof(valueType.value) !== "string"){
 					this.fail("object property with variable key expected to be constant string, got something else: ", type)
 				}
-				props[valueType.value] = this.simplifyInternal(type.propertyByConstKeys[valueName]!, genArgs)
+				let srcProp = type.propertyByConstKeys[valueName]!
+				let prop: Runtyper.SimpleType = this.simplifyInternal(srcProp, genArgs, null)
+				if(srcProp.optional){
+					prop = this.appendConstToType(prop, undefined)
+				}
+				result.properties[valueType.value] = prop
 			}
 		}
 
 		let index = null as Runtyper.ObjectIndexType<Runtyper.SimpleType> | null
 		if(type.index){
-			let keyType = this.simplifyInternal(type.index.keyType, genArgs)
+			let keyType = this.simplifyInternal(type.index.keyType, genArgs, null)
 			if(isObjectIndexKeyType(keyType)){
 				index = {
 					keyType,
 					valueType: removeConstantFromType(
-						this.simplifyInternal(type.index.valueType, genArgs),
+						this.simplifyInternal(type.index.valueType, genArgs, null),
 						undefined
 					)
 				}
@@ -336,11 +377,11 @@ export class TypeSimplifier {
 				this.fail("type cannot be used as object index type: ", keyType)
 			}
 		}
-		return {
-			type: "object",
-			properties: props,
-			...(index ? {index} : {})
+		if(index){
+			result.index = index
 		}
+
+		return result
 	}
 
 	/** Create a new set of generic arguments for a set of type parameters */
@@ -360,7 +401,7 @@ export class TypeSimplifier {
 				if(!arg){
 					this.fail("type argument not passed for type parameter " + param.name + ": ", reference)
 				}
-				simple[param.name] = this.simplifyInternal(arg, oldGenericArgs)
+				simple[param.name] = this.simplifyInternal(arg, oldGenericArgs, null)
 			}
 		}
 		return simple
@@ -385,31 +426,24 @@ export class TypeSimplifier {
 	// 	}
 	// }
 
-	private simplifyIntersection(type: Runtyper.IntersectionType, genArgs: GenArgs): Runtyper.SimpleType {
-		let types = type.types.map(type => this.simplifyInternal(type, genArgs))
+	private simplifyIntersection(type: Runtyper.IntersectionType, genArgs: GenArgs, fullRefName: string | null): Runtyper.SimpleType {
+		let types = type.types.map(type => this.simplifyInternal(type, genArgs, fullRefName))
 		if(types.find(x => x.type === "never")){
 			return {type: "never"}
 		}
-		if(types.find(x => x.type === "any")){
-			// does not make much sense to me, but it really works like that
-			return {type: "any"}
-		}
+		// sometimes this will actually produce `any` when there is `never`
+		// like, `any & 5 & 10`
+		// if(types.find(x => x.type === "any")){
+		// 	// does not make much sense to me, but it really works like that
+		// 	return {type: "any"}
+		// }
 
-		// unknown & anything_else = anything_else
-		let beforeUnknownDropCount = types.length
-		types = types.filter(x => x.type !== "unknown")
-		if(types.length === 1){
-			return types[0]!
-		} else if(types.length === 0){
-			return beforeUnknownDropCount > 0 ? {type: "unknown"} : {type: "never"}
-		} else {
-			// I could add a lot here
-			// drop of primitive types if there is a constant of such type
-			// merging of objects
-			// early `never` detections
-			// but this is too complex for me right now, I don't want to deal with it
-			return {type: "intersection", types}
-		}
+		// I could add a lot here
+		// drop of primitive types if there is a constant of such type
+		// merging of objects
+		// early `never` detections
+		// but this is too complex for me right now, I don't want to deal with it
+		return {type: "intersection", types}
 	}
 
 	private makeUnion(types: Runtyper.SimpleType[]): Runtyper.SimpleType {
@@ -611,8 +645,8 @@ export class TypeSimplifier {
 							for(let i = 0; i < template.valueTypes.length; i++){
 								let tempType = template.valueTypes[i]!
 								let checkType = checked.valueTypes[i]!
-								if(tempType.type === "rest" || tempType.optional || checkType.type === "rest" || checkType.optional){
-									this.fail("matching of extends of tuple types with optional/rest arguments is not supported: ", srcExpr)
+								if(tempType.type === "rest" || checkType.type === "rest"){
+									this.fail("matching of extends of tuple types with rest arguments is not supported: ", srcExpr)
 								}
 								let newInfer = this.typeExtendsType(checkType, tempType, srcExpr)
 								if(!newInfer){
@@ -635,8 +669,6 @@ export class TypeSimplifier {
 							let checkType = checked.valueTypes[i]!
 							if(checkType.type === "rest"){
 								checkType = checkType.valueType
-							} else if(checkType.optional){
-								this.fail("matching of optional tuple element against array type is not supported: ", srcExpr)
 							}
 							let newInfer = this.typeExtendsType(checkType, template.valueType, srcExpr)
 							if(!newInfer){

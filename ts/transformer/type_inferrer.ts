@@ -3,7 +3,7 @@ import {RuntyperTricks} from "transformer/tricks"
 import {TypeDescriberBase} from "transformer/type_describer_base"
 import {TypeNodeDescriber} from "transformer/type_node_describer"
 import * as Tsc from "typescript"
-import {deepEquals} from "utils"
+import {deepEquals} from "utils/utils"
 
 export class TypeInferrer extends TypeDescriberBase {
 

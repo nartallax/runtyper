@@ -9,7 +9,7 @@ let y = 5
 export type ConstTypeof = typeof x
 export type VarTypeof = typeof y
 
-let bigObj = {a: 5, b: 10, z: {y: {x: [1, 2, 3]}}}
+const bigObj = {a: 5, b: 10, z: {y: {x: [1, 2, 3]}}}
 
 export type BigObjTypeof = typeof bigObj
 
@@ -20,5 +20,5 @@ namespace NS {
 
 export type NamespacedObjectType = typeof NS.obj["b"]["c"]
 
-let {f} = {f: 5}
+const {f} = {f: 5}
 export type DestructuredVarType = typeof f

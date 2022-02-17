@@ -1,5 +1,5 @@
 import {Runtyper} from "entrypoint"
-import {isObjectIndexKeyType} from "simple_type_utils"
+import {isObjectIndexKeyType} from "utils/simple_type_utils"
 import {DestructVariable} from "transformer/tricks"
 import {TypeDescriberBase} from "transformer/type_describer_base"
 import {TypeInferrer} from "transformer/type_inferrer"

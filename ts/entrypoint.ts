@@ -121,7 +121,7 @@ export namespace Runtyper {
 	| ConstantType
 	| ConstantUnionType
 	| ArrayType<SimpleType>
-	| TupleType<SimpleType>
+	| SimpleTupleType<SimpleType>
 	| SimpleObjectType<SimpleType>
 
 	export interface Class {
@@ -286,13 +286,17 @@ export namespace Runtyper {
 		readonly rest?: true
 	}
 
-	export type TupleElementType<T = Type> = ((T & {readonly optional?: true}) | RestType<T>)
-	export interface TupleType<T = Type> {
+	export type SimpleTupleElementType<T = Type> = (T | RestType<T>)
+	export interface SimpleTupleType<T = Type>{
 		readonly type: "tuple"
 		// keep in mind `rest` parameter
 		// best way to match value to this type descriptions is to approach rest from start,
 		// then from the end, then try to match all values that left to the rest parameter type
 		// I guess that's why typescript allows no more than rest parameter per tuple
+		readonly valueTypes: readonly SimpleTupleElementType<T>[]
+	}
+	export type TupleElementType<T = Type> = ((T & {readonly optional?: true}) | RestType<T>)
+	export interface TupleType<T = Type> extends SimpleTupleType<T> {
 		readonly valueTypes: readonly TupleElementType<T>[]
 	}
 
