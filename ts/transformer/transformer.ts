@@ -220,7 +220,7 @@ class Scope {
 			funcDecl = {type: "function", signatures: []}
 		} else {
 			switch(funcDecl.type){
-				case "illegal": return
+				case "broken": return
 				case "function": break
 				default: throw new Error("Function named " + name + " is also non-function: " + funcDecl.type)
 			}

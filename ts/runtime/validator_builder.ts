@@ -98,8 +98,8 @@
 
 // 	private buildCode(type: Runtyper.Type, genericArgs: GenArgs): ValidatorCode {
 // switch(type.type){
-// 	case "illegal":
-// 		this.fail("detected illegal type in file " + type.file + " when processing " + type.node + ": " + type.message)
+// 	case "broken":
+// 		this.fail("detected broken type in file " + type.file + " when processing " + type.node + ": " + type.message)
 // 	// eslint-disable-next-line no-fallthrough
 // 	case "number": return {
 // 		isCondition: true,
@@ -174,7 +174,7 @@
 // 			}
 // 			let signature = fnType.signatures[0]!
 // 			return this.buildCode(signature.returnType)
-// 		} else if(fnType.type === "illegal"){
+// 		} else if(fnType.type === "broken"){
 // 			return this.buildCode(fnType)
 // 		} else {
 // 			this.fail("expected function type, got " + fnType.type + " instead: ", fnType)

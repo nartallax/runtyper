@@ -69,8 +69,8 @@ export class TypeSimplifier {
 
 	private simplifyInternal(type: Runtyper.Type, genArgs: GenArgs, fullRefName: string | null, throwOnCircular = false): Runtyper.SimpleType {
 		switch(type.type){
-			case "illegal":
-				this.fail("detected illegal type in file " + type.file + " when processing " + type.node + ": " + type.message)
+			case "broken":
+				this.fail("detected broken type in file " + type.file + " when processing " + type.node + ": " + type.message)
 			// eslint-disable-next-line no-fallthrough
 			case "number":
 			case "string":
@@ -501,7 +501,7 @@ export class TypeSimplifier {
 				return this.checkNoInferredNamesCollision(type, result)
 			}
 			case "array": return this.findSourceInfers(type.valueType)
-			case "illegal": this.fail("cannot find source infers in illegal type: ", type)
+			case "broken": this.fail("cannot find source infers in broken type: ", type)
 			// eslint-disable-next-line no-fallthrough
 			default: return new Set()
 		}

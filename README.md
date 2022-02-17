@@ -22,7 +22,6 @@ check all the TODOs
 // TODO: validator option to allow/disallow extra data on objects, and dont forget about indexed/mapped types
 // TODO: validator option to enum checking: just type string/number, or by value set
 // TODO: cleanup option after all the validators are built
-rename illegal type to something more sound
 change transformer type to "program" in test tsconfig
 more tests for relative relations of unknown, never and any (infer, intersection, union)
 docs about optional === undefined

@@ -13,7 +13,7 @@ export abstract class TypeDescriberBase {
 		this.sourceModuleName = tricks.modulePathResolver.getCanonicalModuleName(file.fileName)
 	}
 
-	fail(message: string, failNode?: Tsc.Node): Runtyper.IllegalType {
+	fail(message: string, failNode?: Tsc.Node): Runtyper.BrokenType {
 		if(failNode){
 			let nodeText: string
 			try {
@@ -26,7 +26,7 @@ export abstract class TypeDescriberBase {
 		let file = this.sourceModuleName
 		let node = this.currentNode?.getText() ?? "<unknown>"
 		return {
-			type: "illegal",
+			type: "broken",
 			file, node, message
 		}
 	}
@@ -49,7 +49,7 @@ export abstract class TypeDescriberBase {
 		return moduleName + ":" + identifiers.map(x => this.tricks.propertyNameToString(x) || x.getText()).join(".")
 	}
 
-	protected wrapTypeExtraction<T>(action: () => T): T | Runtyper.IllegalType {
+	protected wrapTypeExtraction<T>(action: () => T): T | Runtyper.BrokenType {
 		try {
 			return action()
 		} catch(e){

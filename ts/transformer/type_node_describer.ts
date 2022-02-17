@@ -174,7 +174,7 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 	describeInterface(node: Tsc.InterfaceDeclaration): Runtyper.Type {
 		return this.wrapTypeExtraction(() => {
 			let base = this.describeObjectType(node)
-			if(base.type === "illegal"){
+			if(base.type === "broken"){
 				return base
 			}
 
@@ -532,7 +532,7 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 	}
 
 
-	describeImportSpecifierSource(decl: Tsc.ImportSpecifier): string | Runtyper.IllegalType {
+	describeImportSpecifierSource(decl: Tsc.ImportSpecifier): string | Runtyper.BrokenType {
 		let modSpec = decl.parent.parent.parent.moduleSpecifier
 		if(!Tsc.isStringLiteral(modSpec)){
 			return this.fail("Module specifier is not string literal: ", modSpec)
@@ -564,7 +564,7 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 
 	// 	if(type && name){
 	// 		this.typeMap.maybeAdd(name, type)
-	// 		if(type.type !== "illegal"){
+	// 		if(type.type !== "broken"){
 	// 			this.findAndRecursivelyDescribeAllReferenceTypesIn(decl)
 	// 		}
 	// 	}

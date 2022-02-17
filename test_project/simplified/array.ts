@@ -19,7 +19,7 @@ simplifiedTests.push([
 
 simplifiedTests.push([
 	Runtyper.getType<MyArr4>(),
-	"detected illegal type in file /types/array when processing export type MyArr4 = ArrayLike<5>: References to most of external types are not supported"
+	"detected broken type in file /types/array when processing export type MyArr4 = ArrayLike<5>: References to most of external types are not supported"
 ])
 
 simplifiedTests.push([

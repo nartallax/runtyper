@@ -110,7 +110,7 @@ export namespace Runtyper {
 	| InterfaceDeclaration
 	| AliasDeclaration
 	| EnumDeclaration
-	| IllegalType
+	| BrokenType
 
 	/** Simplified type information.
 	 * All references, generics, declarations, smart conditions and operations etc are resolved.
@@ -351,11 +351,11 @@ export namespace Runtyper {
 	/** This is one way of reporting errors from transformer
 	 * Thing is, there are a lot of ways to use Typescript, and some of them is painful to support in transformer
 	 * Therefore, transformer cannot process some types, and has to return error
-	 * There is two ways of returning error: just throw, or yield illegal type
-	 * Runtime functions are expected to throw if they discover illegal type
-	 * That way some of illegal types won't result in a throw, because they will never be discovered by runtime functions */
-	export interface IllegalType {
-		readonly type: "illegal"
+	 * There is two ways of returning error: just throw, or yield broken type
+	 * Runtime functions are expected to throw if they discover broken type
+	 * That way some of broken types won't result in a throw, because they will never be discovered by runtime functions */
+	export interface BrokenType {
+		readonly type: "broken"
 		readonly file: string
 		readonly node: string
 		readonly message: string

@@ -25,7 +25,7 @@
 // export function typeToString(type: Runtyper.Type): string {
 
 // 	switch(type.type){
-// 		case "illegal": return "<illegal type: " + type.message + ">"
+// 		case "broken": return "<broken type: " + type.message + ">"
 // 		case "constant": return constantValueToString(type.value)
 // 		case "constant_union": return "(" + type.value.map(x => constantValueToString(x)).join(" | ") + ")"
 // 		case "string": return "string"
