@@ -414,25 +414,6 @@ export class TypeSimplifier {
 		return simple
 	}
 
-	// private indexTypeIncludesValue(indexType: Runtyper.SimpleType, value: string): boolean {
-	// 	if(indexType.type === "string"){
-	// 		return true
-	// 	} else if(indexType.type === "union"){
-	// 		for(let subtype of indexType.types){
-	// 			if(this.indexTypeIncludesValue(subtype, value)){
-	// 				return true
-	// 			}
-	// 		}
-	// 		return false
-	// 	} else if(indexType.type === "constant"){
-	// 		return indexType.value === value
-	// 	} else if(indexType.type === "constant_union"){
-	// 		return indexType.value.indexOf(value) >= 0
-	// 	} else {
-	// 		return false
-	// 	}
-	// }
-
 	private simplifyIntersection(type: Runtyper.IntersectionType, genArgs: GenArgs, fullRefName: string | null): Runtyper.SimpleType {
 		let types = type.types.map(type => this.simplifyInternal(type, genArgs, fullRefName))
 		if(types.find(x => x.type === "never")){
@@ -456,64 +437,6 @@ export class TypeSimplifier {
 	private makeUnion(types: Runtyper.SimpleType[]): Runtyper.SimpleType {
 		return makeUnion(types, false)
 	}
-
-	/*
-	private findSourceInfers(type: Runtyper.Type): Set<string> {
-		switch(type.type){
-			case "type_reference":{
-				let args = type.typeArguments || []
-				let result = [] as string[]
-				args.forEach(type => {
-					if(type.type === "infer"){
-						result.push(type.name)
-					} else {
-						result.push(...this.findSourceInfers(type))
-					}
-				})
-				return new Set(result)
-			}
-			case "union":{
-				let result = [] as string[]
-				type.types.forEach(subtype => result.push(...this.findSourceInfers(subtype)))
-				result = [...new Set(result)]
-				return new Set(result)
-			}
-			case "intersection":{
-				let result = [] as string[]
-				type.types.forEach(subtype => result.push(...this.findSourceInfers(subtype)))
-				return this.checkNoInferredNamesCollision(type, result)
-			}
-			case "object":{
-				let result = [] as string[]
-				for(let propName in type.properties){
-					result.push(...this.findSourceInfers(type.properties[propName]!))
-				}
-				if(type.propertyByConstKeys){
-					for(let propName in type.propertyByConstKeys){
-						result.push(...this.findSourceInfers(type.propertyByConstKeys[propName]!))
-					}
-				}
-				if(type.index){
-					result.push(...this.findSourceInfers(type.index.keyType))
-					result.push(...this.findSourceInfers(type.index.valueType))
-				}
-
-				return this.checkNoInferredNamesCollision(type, result)
-			}
-			case "tuple":{
-				let result = [] as string[]
-				type.valueTypes.forEach(subtype => {
-					result.push(...this.findSourceInfers(subtype.type === "rest" ? subtype.valueType : subtype))
-				})
-				return this.checkNoInferredNamesCollision(type, result)
-			}
-			case "array": return this.findSourceInfers(type.valueType)
-			case "broken": this.fail("cannot find source infers in broken type: ", type)
-			// eslint-disable-next-line no-fallthrough
-			default: return new Set()
-		}
-	}
-	*/
 
 	private findSourceInfers(cond: Runtyper.ConditionalType): string[] {
 		let allowedTypes = new Set<Runtyper.Type["type"]>([
@@ -547,6 +470,40 @@ export class TypeSimplifier {
 		return result
 	}
 
+	private checkIntersectionExtends(intersection: Runtyper.IntersectionType<Runtyper.SimpleType>, otherType: Runtyper.SimpleType, isIntersectionCheckedType: boolean, srcExpr: Runtyper.Type): InferMap | null {
+		let result = new Map<string, Runtyper.SimpleType>()
+		for(let subtype of intersection.types){
+			let infers = isIntersectionCheckedType
+				? this.typeExtendsType(subtype, otherType, srcExpr)
+				: this.typeExtendsType(otherType, subtype, srcExpr)
+			if(!infers){
+				return null
+			}
+			this.mergeInfers(result, infers)
+		}
+		return result
+	}
+
+	private checkUnionExtends(intersection: Runtyper.UnionType<Runtyper.SimpleType>, otherType: Runtyper.SimpleType, isUnionCheckedType: boolean, srcExpr: Runtyper.Type): InferMap | null {
+		let result: InferMap | null = null
+		for(let subtype of intersection.types){
+			let infers = isUnionCheckedType
+				? this.typeExtendsType(subtype, otherType, srcExpr)
+				: this.typeExtendsType(otherType, subtype, srcExpr)
+			result = this.mergeInfers(result, infers)
+			// we MUST walk all the union members to catch possible inferred types
+			// so no break here
+		}
+		if(result && result.size > 0){
+			// here I fear of inconsistent behavior of inferring types from unions
+			// like, `{x: number | T}`, matched against `{x: number}`, will infer T = number
+			// but when matched against `{x: boolean}`, will infer T = boolean
+			// I don't want to deal with it
+			this.fail("inferring anything from unions is not supported: ", srcExpr)
+		}
+		return result
+	}
+
 	private typeExtendsType(checked: Runtyper.SimpleType, template: Runtyper.SimpleType, srcExpr: Runtyper.Type): InferMap | null {
 		let inferringName = getInferredUnknownName(template)
 		if(inferringName){
@@ -569,58 +526,13 @@ export class TypeSimplifier {
 		} else if(checked.type === "never"){
 			return null
 		} else if(checked.type === "union"){
-			// TODO: code dup
-			let result: InferMap | null = null
-			for(let subtype of checked.types){
-				let infers = this.typeExtendsType(subtype, template, srcExpr)
-				result = this.mergeInfers(result, infers)
-			}
-			if(result && result.size > 0){
-				// do I need this check here? I'm not sure
-				this.fail("inferring anything from unions is not supported: ", srcExpr)
-			}
-			return null
+			return this.checkUnionExtends(checked, template, true, srcExpr)
 		} else if(checked.type === "intersection"){
-			// TODO: code dup
-			let result = new Map<string, Runtyper.SimpleType>()
-			for(let subtype of checked.types){
-				let infers = this.typeExtendsType(subtype, template, srcExpr)
-				if(!infers){
-					return null
-				}
-				this.mergeInfers(result, infers)
-			}
-			return result
+			return this.checkIntersectionExtends(checked, template, true, srcExpr)
 		} else {
 			switch(template.type){
-				case "union":{
-					let result: InferMap | null = null
-					for(let subtype of template.types){
-						let infers = this.typeExtendsType(checked, subtype, srcExpr)
-						result = this.mergeInfers(result, infers)
-						// we MUST walk all the union members to catch possible inferred types
-						// so no break here
-					}
-					if(result && result.size > 0){
-						// here I fear of inconsistent behavior of inferring types from unions
-						// like, `{x: number | T}`, matched against `{x: number}`, will infer T = number
-						// but when matched against `{x: boolean}`, will infer T = boolean
-						// I don't want to deal with it
-						this.fail("inferring anything from unions is not supported: ", srcExpr)
-					}
-					return result
-				}
-				case "intersection":{
-					let result = new Map<string, Runtyper.SimpleType>()
-					for(let subtype of template.types){
-						let infers = this.typeExtendsType(checked, subtype, srcExpr)
-						if(!infers){
-							return null
-						}
-						this.mergeInfers(result, infers)
-					}
-					return result
-				}
+				case "union": return this.checkUnionExtends(template, checked, false, srcExpr)
+				case "intersection":return this.checkIntersectionExtends(template, checked, false, srcExpr)
 				case "constant":{
 					if(checked.type === "constant" && checked.value === template.value){
 						return new Map()
