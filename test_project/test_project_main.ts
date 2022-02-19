@@ -7,7 +7,7 @@ export function main(): void {
 	for(let [srcType, result] of simplifiedTests){
 		// console.log("running simplification test: ", srcType)
 		try {
-			let simplifiedStructure = Runtyper.simplifier.simplify(srcType)
+			let simplifiedStructure = Runtyper.getSimplifier().simplify(srcType)
 			// console.dir(simplifiedStructure, {depth: null})
 			try {
 				void JSON.stringify(simplifiedStructure) // to check on recursive types

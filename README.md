@@ -20,6 +20,7 @@ can add validators to aliases of primitive types
 check all the TODOs
 // TODO: validator option to allow/disallow unknown/any
 // TODO: validator option to allow/disallow extra data on objects, and dont forget about indexed/mapped types
-// TODO: validator option to enum checking: just type string/number, or by value set
+// TODO: validator option about return type: boolean/error description/throw
 // TODO: cleanup option after all the validators are built
 look at names on which simplified types are cached
+support external types (consider never including class declarations and/or interfaces with function property values in code: such types will never produce a validator, but can easily make js generated code infinitely times larger)

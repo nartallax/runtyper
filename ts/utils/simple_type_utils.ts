@@ -3,7 +3,7 @@ import {getInferredUnknownName} from "inferred_unknown"
 
 /** Given some selection of types, make type that represents them as union
  * May return a lot of different types, not only union types */
-export function makeUnion(types: Runtyper.SimpleType[], dropConstantsBySimpleTypes = true): Runtyper.SimpleType {
+export function makeUnion(types: readonly Runtyper.SimpleType[], dropConstantsBySimpleTypes = true): Runtyper.SimpleType {
 	let consts = [] as Runtyper.ConstantType["value"][]
 	let otherTypes = [] as Runtyper.SimpleType[]
 	let simpleTypes = [] as ("string" | "number" | "boolean")[]
@@ -106,4 +106,14 @@ export function isObjectIndexKeyType(type: Runtyper.Type): type is Runtyper.Obje
 	} else {
 		return false
 	}
+}
+
+export function canBeUndefined(type: Runtyper.SimpleType): boolean {
+	let hasUndefined = false
+	forEachTerminalTypeInUnion(type, subtype => {
+		if(subtype.type === "constant" && subtype.value === undefined){
+			hasUndefined = true
+		}
+	})
+	return hasUndefined
 }

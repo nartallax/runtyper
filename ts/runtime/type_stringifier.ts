@@ -9,7 +9,7 @@ function constantValueToString(v: Runtyper.ConstantType["value"]): string {
 }
 
 export function isValidIdentifier(name: string): boolean {
-	return !!name.match(/[a-zA-Z_][a-zA-Z\d_]*/)
+	return !!name.match(/^[a-zA-Z_][a-zA-Z\d_]*$/)
 }
 
 export function simpleTypeToString(type: Runtyper.SimpleType, useFullNames: boolean): string {

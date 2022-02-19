@@ -4,6 +4,7 @@ import * as Tsc from "typescript"
 import {RuntyperTricks} from "transformer/tricks"
 import {Transformer, TransParams} from "transformer/transformer"
 import {TypeSimplifier} from "runtime/type_simplifier"
+import {ValidatorBuilder} from "runtime/validator_builder"
 
 export namespace Runtyper {
 
@@ -23,6 +24,12 @@ export namespace Runtyper {
 		 * This means that you are certain that this other package also uses Runtyper to describe its types.
 		 * (also that means that any validators the package put on the referenced type will also become a part of your validators) */
 		// referenciallyReferencablePackages: string[]
+	}
+
+	export interface ValidatorBuilderOptions {
+		onUnknown: "throw_on_build" | "allow_anything"
+		onAny: "throw_on_build" | "allow_anything"
+		onUnknownFieldInObject: "validation_error" | "allow_anything"
 	}
 
 
@@ -79,7 +86,26 @@ export namespace Runtyper {
 		}
 	}
 
-	export const simplifier = new TypeSimplifier()
+	let simplifier: TypeSimplifier | null = null
+	export function getSimplifier(): TypeSimplifier {
+		return simplifier ||= new TypeSimplifier()
+	}
+
+	let builders = {} as {[k: string]: ValidatorBuilder}
+	export function getValidatorBuilder(opts?: Partial<ValidatorBuilderOptions>): ValidatorBuilder {
+		let fullOpts: ValidatorBuilderOptions = {
+			onAny: "throw_on_build",
+			onUnknown: "throw_on_build",
+			onUnknownFieldInObject: "validation_error",
+			...(opts || {})
+		}
+
+		let key = Object.keys(fullOpts).sort()
+			.map(key => fullOpts[key as keyof ValidatorBuilderOptions])
+			.join("|")
+
+		return builders[key] ||= new ValidatorBuilder(fullOpts)
+	}
 
 }
 
