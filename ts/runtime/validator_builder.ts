@@ -1,20 +1,14 @@
 import {Runtyper} from "entrypoint"
 import {isValidIdentifier, simpleTypeToString} from "runtime/type_stringifier"
 import {canBeUndefined, forEachTerminalTypeInUnion, makeUnion} from "utils/simple_type_utils"
-import {capitalize} from "utils/utils"
 
 let validatorsGeneratedCounter = 0
-
-export interface ValidatorOuterValue {
-	name: string
-	value: unknown
-}
 
 /** Code of validator that is expression
  * This expression is either returns failure information if validation failed, or falsy value if the value is alright */
 interface ExpressionValidatorCodePart {
 	isExpression: true
-	values?: ValidatorOuterValue[]
+	values?: Runtyper.ValidatorOuterValue[]
 	expression(valueName: string): string
 	condition(valueName: string): string
 }
@@ -25,23 +19,16 @@ interface FunctionValidatorCodePart {
 	isExpression: false
 	declaration: string
 	declarationName: string
-	values?: ValidatorOuterValue[]
+	values?: Runtyper.ValidatorOuterValue[]
 }
 
 type ValidatorCodePart = ExpressionValidatorCodePart | FunctionValidatorCodePart
 
-export interface ValidatorCode {
-	code: string
-	values: ValidatorOuterValue[]
-}
-
-export interface ErrorValidationResult {
+interface ErrorValidationResult {
 	value: unknown
 	path: (string | number)[]
 	expression: string
 }
-
-type ValidatorResultType = "throw" | "boolean" | "structure"
 
 export class ValidatorBuilder {
 
@@ -50,7 +37,6 @@ export class ValidatorBuilder {
 	private readonly validatorsCache = new Map<Runtyper.SimpleType, FunctionValidatorCodePart>()
 
 	constructor(private readonly opts: Runtyper.ValidatorBuilderOptions) {
-		void this.opts // TODO: use options
 		this.reset()
 	}
 
@@ -58,51 +44,25 @@ export class ValidatorBuilder {
 		this.usedParamIdentifiers.clear()
 		this.functionDeclarations.clear()
 		this.validatorsCache.clear()
+
 		let errDescr = this.makeErrorDescribingFunction()
 		this.functionDeclarations.set(errDescr.declarationName, errDescr)
+
+		// explicitly forbidding some of identifiers to prevent name collision
+		this.usedParamIdentifiers.set("i", {})
+		this.usedParamIdentifiers.set("propName", {})
+		this.usedParamIdentifiers.set("obj", {})
+		this.usedParamIdentifiers.set("tuple", {})
+		this.usedParamIdentifiers.set("arr", {})
 	}
 
-	/** Build validator function that will return either error in form of structure, or null if there is no error */
-	buildReturningStructure(type: Runtyper.SimpleType): (x: unknown) => ErrorValidationResult | null {
-		return this.buildFunctionAndReset(type, "structure") as (x: unknown) => ErrorValidationResult | null
+	build<T = unknown>(type: Runtyper.SimpleType): (x: unknown) => x is T {
+		return this.buildFunction(this.buildCode(type))
 	}
 
-	/** Build validator function that will throw if error is present, and return true otherwise
-	 * Showing text of the error to end user is not recommended as it may disclose implementation details */
-	buildThrowing(type: Runtyper.SimpleType): (x: unknown) => true | never {
-		return this.buildFunctionAndReset(type, "throw") as (x: unknown) => true | never
-	}
-
-	/** Build validator function that will return true if there is no error, false otherwise
-	 * Not recommended because of debug difficulties */
-	buildReturningBoolean(type: Runtyper.SimpleType): (x: unknown) => boolean {
-		return this.buildFunctionAndReset(type, "boolean") as (x: unknown) => boolean
-	}
-
-	/** Build validator code that will return either error in form of structure, or null if there is no error */
-	buildCodeReturningStructure(type: Runtyper.SimpleType): ValidatorCode {
-		return this.buildCodeAndReset(type, "structure")
-	}
-
-	/** Build validator code that will throw if error is present, and return true otherwise
-	 * Showing text of the error to end user is not recommended as it may disclose implementation details */
-	buildCodeThrowing(type: Runtyper.SimpleType): ValidatorCode {
-		return this.buildCodeAndReset(type, "throw")
-	}
-
-	/** Build validator code that will return true if there is no error, false otherwise
-	 * Not recommended because of debug difficulties */
-	buildCodeReturningBoolean(type: Runtyper.SimpleType): ValidatorCode {
-		return this.buildCodeAndReset(type, "boolean")
-	}
-
-	private buildFunctionAndReset(type: Runtyper.SimpleType, resultType: ValidatorResultType): unknown {
-		return this.buildFunction(this.buildCodeAndReset(type, resultType))
-	}
-
-	private buildCodeAndReset(type: Runtyper.SimpleType, resultType: ValidatorResultType): ValidatorCode {
+	buildCode(type: Runtyper.SimpleType): Runtyper.ValidatorCode {
 		try {
-			return this.buildFullCode(type, resultType)
+			return this.buildFullCode(type)
 		} finally {
 			this.reset()
 		}
@@ -112,7 +72,7 @@ export class ValidatorBuilder {
 		return this.usedParamIdentifiers.has(name) || this.functionDeclarations.has(name)
 	}
 
-	private makeParam(suggestedName: string, value: unknown): ValidatorOuterValue {
+	private makeParam(suggestedName: string, value: unknown): Runtyper.ValidatorOuterValue {
 		let counter = 1
 		let name = suggestedName
 		while(this.isIdentifierInUse(name)){
@@ -123,16 +83,27 @@ export class ValidatorBuilder {
 				name = suggestedName + "_" + (counter++)
 			}
 		}
-		this.usedParamIdentifiers.set(name, value)
+		this.usedParamIdentifiers.set(this.makeIdentifierCodeSafe(name), value)
 		return {name, value}
 	}
 
-	private makeValidationFunctionName(refName: string): string {
-		refName = refName.replace(/</g, "_of_")
+	private makeIdentifierCodeSafe(base: string): string {
+		return base.replace(/</g, "_of_")
 			.replace(/[\s>,.:]/g, "_")
-			.replace(/[^a-zA-Z\d]/, "")
+			.replace(/[^a-zA-Z\d_]/, "")
 			.replace(/_+/g, "_")
-		return this.findUnusedIdentifier("validate_" + refName)
+	}
+
+	private makeComment(text: string): string {
+		return "/* " + text
+			.replace(/\/\*/g, "/ *")
+			.replace(/\*\//g, "* /")
+			.replace(/[\n\r]/g, " ")
+			+ " */"
+	}
+
+	private makeValidationFunctionName(refName: string): string {
+		return this.findUnusedIdentifier(this.makeIdentifierCodeSafe("validate_" + refName))
 	}
 
 	private findUnusedIdentifier(baseName: string): string {
@@ -144,7 +115,7 @@ export class ValidatorBuilder {
 		return name
 	}
 
-	private conditionToExpression(conditionExpressionCode: (valueCode: string) => string, values?: ValidatorOuterValue[]): ExpressionValidatorCodePart {
+	private conditionToExpression(conditionExpressionCode: (valueCode: string) => string, values?: Runtyper.ValidatorOuterValue[]): ExpressionValidatorCodePart {
 		return {
 			isExpression: true,
 			values,
@@ -156,12 +127,21 @@ export class ValidatorBuilder {
 		}
 	}
 
+	private makeAllowEverythingExpression(reason: string): ExpressionValidatorCodePart {
+		let text = this.makeComment(reason) + " false"
+		return {
+			isExpression: true,
+			condition: () => text,
+			expression: () => text
+		}
+	}
+
 	private readonly errorDescriptionFnName = "fail"
 	private makeErrorDescribingFunction(): FunctionValidatorCodePart {
 		return {
 			isExpression: false,
 			declarationName: this.errorDescriptionFnName,
-			declaration: `/* form error description */
+			declaration: `/* make error description structure */
 function ${this.errorDescriptionFnName}(value, expression){
 	return {value, path: [], expression}
 }`
@@ -169,7 +149,7 @@ function ${this.errorDescriptionFnName}(value, expression){
 	}
 
 	private makeDescribeErrorCall(valueCode: string, exprCode: string): string {
-		return `${this.errorDescriptionFnName}(${valueCode}, ${exprCode})`
+		return `${this.errorDescriptionFnName}(${valueCode}, ${JSON.stringify(exprCode)})`
 	}
 
 	private validatorToExpressionCode(validator: ValidatorCodePart, valueCode: string): string {
@@ -207,8 +187,8 @@ function ${this.errorDescriptionFnName}(value, expression){
 	/** Extract all outer values of all the expressions in one single array
 	 * Values from functions are not extracted, as they can be extracted later;
 	 * extracting them here may lead to duplicate values */
-	private valuesOfExpressions(codes: ValidatorCodePart[]): ValidatorOuterValue[] | undefined {
-		let result = undefined as ValidatorOuterValue[] | undefined
+	private valuesOfExpressions(codes: ValidatorCodePart[]): Runtyper.ValidatorOuterValue[] | undefined {
+		let result = undefined as Runtyper.ValidatorOuterValue[] | undefined
 		codes.forEach(code => {
 			if(code.isExpression && code.values){
 				(result ||= []).push(...code.values)
@@ -229,7 +209,13 @@ function ${this.errorDescriptionFnName}(value, expression){
 	private buildCodePart(type: Runtyper.SimpleType): ValidatorCodePart {
 		switch(type.type){
 			case "number": return this.conditionToExpression(
-				valueCode => `(typeof(${valueCode}) !== "number" || Number.isNaN(${valueCode}))`
+				valueCode => {
+					let code = `(typeof(${valueCode}) !== "number"`
+					if(this.opts.onNaNWhenExpectedNumber === "validation_error"){
+						code += ` || Number.isNaN(${valueCode}))`
+					}
+					return code
+				}
 			)
 			case "string": return this.conditionToExpression(
 				valueCode => `typeof(${valueCode}) !== "string"`
@@ -237,11 +223,21 @@ function ${this.errorDescriptionFnName}(value, expression){
 			case "boolean": return this.conditionToExpression(
 				valueCode => `(${valueCode} !== true && ${valueCode} !== false)`
 			)
-			case "any": return this.conditionToExpression(() => "true") // TODO: customize by options
-			case "unknown": return this.conditionToExpression(() => "true") // TODO: customize by options
-			case "never": return this.conditionToExpression(() => "false")
+			case "any":
+				if(this.opts.onAny === "allow_anything"){
+					return this.makeAllowEverythingExpression("any allows everything")
+				} else {
+					throw new Error("Failed to build validator: `any` type is not allowed")
+				}
+			case "unknown":
+				if(this.opts.onUnknown === "allow_anything"){
+					return this.makeAllowEverythingExpression("unknown allows everything")
+				} else {
+					throw new Error("Failed to build validator: `unknown` type is not allowed")
+				}
+			case "never": return this.conditionToExpression(() => this.makeComment("type: never") + " true")
 			case "constant":{
-				let values: ValidatorOuterValue[] | undefined = undefined
+				let values: Runtyper.ValidatorOuterValue[] | undefined = undefined
 				let valueToCheck: string
 				if(type.value === undefined){
 					valueToCheck = "void 0"
@@ -256,12 +252,12 @@ function ${this.errorDescriptionFnName}(value, expression){
 				} else if(typeof(type.value) === "number" && type.value % 1 === 0 && Math.abs(type.value) - 1 < Number.MAX_SAFE_INTEGER){
 					valueToCheck = type.value + ""
 				} else {
-					let name = "constOf" + capitalize(typeof(type.value))
+					let name = "const_of_" + typeof(type.value)
 					let cval = this.makeParam(name, type.value)
 					values = [cval]
 					valueToCheck = cval.name
 				}
-				return this.conditionToExpression(valueCode => `${valueCode} === ${valueToCheck}`, values)
+				return this.conditionToExpression(valueCode => `${valueCode} !== ${valueToCheck}`, values)
 			}
 			case "constant_union":{
 				let set = new Set(type.value)
@@ -331,24 +327,19 @@ function ${this.errorDescriptionFnName}(value, expression){
 
 
 			case "object":{
-				let name = type.refName || "object"
-				if(name.length > 30){
-					name = "object"
+				let rawName = "object"
+				if(type.refName && type.refName.length < 30){
+					rawName = type.refName
 				}
-				return this.buildOrGetCachedCode(type, name, fnDecl => {
+				return this.buildOrGetCachedCode(type, rawName, fnDecl => {
 					let paramName = "obj"
 					let comment = ""
 					if(type.refName){
-						comment = `/* for ${type.refName.replace(/\/\*/g, "/ *").replace(/\*\//g, "* /")} */\n`
+						comment = this.makeComment("for " + type.refName) + "\n"
 					}
 
-					let values: ValidatorOuterValue[] = []
-					let setOfFieldNames: ValidatorOuterValue | null = null
+					let values: Runtyper.ValidatorOuterValue[] = []
 					let fixedKeys = Object.keys(type.properties)
-					if(fixedKeys.length > 0){
-						setOfFieldNames = this.makeParam("knownFieldsOf_" + name, new Set(fixedKeys))
-						values.push(setOfFieldNames)
-					}
 
 					// building code for known keys
 					let propConds = [] as ValidatorCodePart[]
@@ -377,6 +368,7 @@ function ${this.errorDescriptionFnName}(value, expression){
 									throw new Error("Cannot build validator: constant key of object is not string: " + JSON.stringify(keySubtype.value) + " (of type " + typeof(keySubtype.value) + ")")
 								}
 								fixedKeysCheckingParts.push(makeFixedKeyCheckerCode(keySubtype.value, type.index!.valueType))
+								fixedKeys.push(keySubtype.value)
 							} else if(keySubtype.type === "string"){
 								hasStringIndex = true
 							} else {
@@ -385,9 +377,17 @@ function ${this.errorDescriptionFnName}(value, expression){
 						})
 					}
 
+					let setOfFieldNames: Runtyper.ValidatorOuterValue | null = null
+					if(fixedKeys.length > 0){
+						setOfFieldNames = this.makeParam(this.makeIdentifierCodeSafe("known_fields_of_" + rawName), new Set(fixedKeys))
+						values.push(setOfFieldNames)
+					}
+
 					// building code that checks unknown keys
 					let unlistedPropsCheckingCode: string
-					if(!hasStringIndex){
+					if(this.opts.onUnknownFieldInObject === "allow_anything"){
+						unlistedPropsCheckingCode = ""
+					} else if(!hasStringIndex){
 						unlistedPropsCheckingCode = `
 		checkResult = ${this.makeDescribeErrorCall(paramName + "[propName]", "<unknown field found>")}
 		checkResult.path.push(propName)
@@ -477,7 +477,7 @@ function ${this.errorDescriptionFnName}(value, expression){
 					for(let i = type.valueTypes.length - 1; i > minLength; i--){
 						let vtype = type.valueTypes[i]!
 						if(vtype.type === "rest"){
-							throw new Error("Cannot build validator: tuple has more than one rest value: " + simpleTypeToString(type, false))
+							throw new Error("Cannot build validator: tuple has more than one rest value: " + simpleTypeToString(type, {fullNames: false}))
 						}
 						makeFixedChecker(i, vtype)
 						minLength = Math.max(minLength, i)
@@ -524,7 +524,7 @@ function ${this.errorDescriptionFnName}(value, expression){
 		}
 	}
 
-	private buildFullCode(rootType: Runtyper.SimpleType, resultType: ValidatorResultType): ValidatorCode {
+	private buildFullCode(rootType: Runtyper.SimpleType): Runtyper.ValidatorCode {
 		let rootValidator = this.buildCodePart(rootType)
 		let allValues = this.valuesOfExpressions([rootValidator]) || []
 		for(let [, decl] of this.functionDeclarations){
@@ -539,48 +539,40 @@ function ${this.errorDescriptionFnName}(value, expression){
 			.sort(([a], [b]) => a > b ? 1 : -1)
 			.map(([, decl]) => decl)
 		for(let decl of sortedDecls){
-			code += "\n" + decl.declaration
+			code += "\n\n" + decl.declaration
 		}
 
 		let paramName = "value"
-		code += `/* validator entrypoint function */\nreturn function(${paramName}){`
-		let rootExpr = this.validatorToExpressionCode(rootValidator, paramName)
-		switch(resultType){
-			case "boolean": code += `
-	return !${rootExpr}`
-				break
-			case "structure": code += `
-	var result = ${rootExpr}
-	if(result){
-		result.path = result.path.reverse()
-	}
-	return result || null`
-				break
-			case "throw": code += `
-	var result = ${rootExpr}
-	if(result){
-		var pathStr = "value" + result.path.reverse()
-			.map(x => typeof(x) === "number"
-			? "[" + x + "]"
-			: x.match(/^[a-zA-Z_][a-zA-Z\\d_]*$/)
-				? "." + x
-				: "[" + JSON.stringify(x) + "]")
-			.join("")
-		throw new Error("Validation failed: bad value at path " + pathStr + " (of type " + typeof(result.value) + "): failed at expression " + result.expression)
-	}
-	return true`
-				break
+		let id = ++validatorsGeneratedCounter
+		code += "\n\n"
+		if(rootValidator.isExpression){
+			code += `return function validator_entrypoint_${id}(${paramName}){
+	return ${this.validatorToExpressionCode(rootValidator, paramName)}
+}`
+		} else {
+			code += `return ${rootValidator.declarationName}`
 		}
-		code += "\n}"
+		code += `\n//# sourceURL=runtyper_validator_generated_code_${id}`
 
-
-		code += "\n//# sourceURL=runtyper_validator_generated_code_" + (++validatorsGeneratedCounter)
 
 		return {code, values: allValues}
 	}
 
-	private buildFunction(code: ValidatorCode): unknown {
+	private buildFunction<T>(code: Runtyper.ValidatorCode): (value: unknown) => value is T {
 		let outerFunction = new Function(...code.values.map(x => x.name), code.code)
-		return outerFunction(...code.values.map(x => x.value))
+		let validatorCompiled = outerFunction(...code.values.map(x => x.value)) as (value: unknown) => ErrorValidationResult
+		return function validatorWrapper(value: unknown): value is T {
+			let result = validatorCompiled(value)
+			if(!result){
+				return true
+			} else {
+				throw new Runtyper.ValidationError(
+					result.value,
+					result.path,
+					result.expression,
+					value
+				)
+			}
+		}
 	}
 }

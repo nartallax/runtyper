@@ -1,18 +1,18 @@
-import {simplifiedTests} from "test_project_main"
+import {simplificationTests} from "test_project_main"
 import {Runtyper} from "runtyper/runtyper"
 import {MyString, Point, SimpleNS} from "types/simple"
 
-simplifiedTests.push([
+simplificationTests.push([
 	Runtyper.getType<Point>(),
 	{type: "object", properties: {x: {type: "number"}, y: {type: "number"}, z: {type: "union", types: [{type: "number"}, {type: "constant", value: undefined}]}}, refName: "Point", fullRefName: "/types/simple:Point"}
 ])
 
-simplifiedTests.push([
+simplificationTests.push([
 	Runtyper.getType<MyString>(),
-	{type: "string"}
+	{type: "string", fullRefName: "/types/simple:MyString", refName: "MyString"}
 ])
 
-simplifiedTests.push([
+simplificationTests.push([
 	Runtyper.getType<SimpleNS.MyMy>(),
-	{type: "constant_union", value: ["cow", "dog"]}
+	{type: "constant_union", value: ["cow", "dog"], fullRefName: "/types/simple:SimpleNS.MyMy", refName: "SimpleNS.MyMy"}
 ])

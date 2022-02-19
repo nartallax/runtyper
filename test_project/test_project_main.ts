@@ -1,10 +1,26 @@
 import {Runtyper} from "runtyper/runtyper"
 
-export const simplifiedTests = [] as [Runtyper.Type, (Runtyper.SimpleType | string)][]
+export const simplificationTests = [] as [Runtyper.Type, (Runtyper.SimpleType | string)][]
+export const codeGenerationTests = [] as [Runtyper.Type, string, Partial<Runtyper.ValidatorBuilderOptions>?][]
 
 export function main(): void {
+
+	let failedCount = runSimplificationTests() + runCodeGenerationTests()
+
+	if(failedCount === 0){
+		console.error("Testing successful.")
+		process.exit(0)
+	} else {
+		console.error("Failed " + failedCount + " tests. Testing failed.")
+		process.exit(failedCount === 0 ? 0 : 1)
+	}
+}
+
+
+
+function runSimplificationTests(): number {
 	let failedCount = 0
-	for(let [srcType, result] of simplifiedTests){
+	for(let [srcType, result] of simplificationTests){
 		// console.log("running simplification test: ", srcType)
 		try {
 			let simplifiedStructure = Runtyper.getSimplifier().simplify(srcType)
@@ -39,12 +55,35 @@ export function main(): void {
 		}
 	}
 
-	process.exit(failedCount === 0 ? 0 : 1)
+	return failedCount
 }
 
-
-
-
+function runCodeGenerationTests(): number {
+	let failCount = 0
+	for(let [type, result, mbOptions] of codeGenerationTests){
+		try {
+			let builder = Runtyper.getValidatorBuilder(mbOptions)
+			let code = builder.buildCode(Runtyper.getSimplifier().simplify(type))
+			if(code.code.indexOf(result) < 0){
+				console.error("\nCode generation test failed:")
+				console.error("source: " + JSON.stringify(type))
+				console.error("expected: " + result)
+				console.error("got: " + code.code)
+				failCount++
+			}
+		} catch(e){
+			if(e instanceof Error && e.message.indexOf(result) < 0){
+				console.error("\nCode generation test failed:")
+				console.error("source: " + JSON.stringify(type))
+				console.error("expected: " + result)
+				console.error("got error text: " + e.message)
+				console.error("stack: " + e.stack)
+				failCount++
+			}
+		}
+	}
+	return failCount
+}
 
 /* eslint-disable @typescript-eslint/ban-types */
 export function deepEquals(a: unknown, b: unknown): boolean {

@@ -12,7 +12,15 @@ export function isValidIdentifier(name: string): boolean {
 	return !!name.match(/^[a-zA-Z_][a-zA-Z\d_]*$/)
 }
 
-export function simpleTypeToString(type: Runtyper.SimpleType, useFullNames: boolean): string {
+export function simpleTypeToString(type: Runtyper.SimpleType, opts?: Partial<Runtyper.SimpleTypeStringificationOptions>): string {
+
+	if(!opts?.useLessName){
+		if(opts?.fullNames && type.fullRefName){
+			return type.fullRefName
+		} else if(type.refName){
+			return type.refName
+		}
+	}
 
 	switch(type.type){
 		case "constant": return constantValueToString(type.value)
@@ -23,16 +31,16 @@ export function simpleTypeToString(type: Runtyper.SimpleType, useFullNames: bool
 		case "any": return "any"
 		case "unknown": return "unknown"
 		case "never": return "never"
-		case "array": return "(" + simpleTypeToString(type.valueType, useFullNames) + ")[]"
+		case "array": return "(" + simpleTypeToString(type.valueType, opts) + ")[]"
 		case "tuple": return "[" + type.valueTypes.map(x => {
 			if(x.type === "rest"){
-				return "..." + simpleTypeToString(x.valueType, useFullNames)
+				return "..." + simpleTypeToString(x.valueType, opts)
 			} else {
-				return simpleTypeToString(x, useFullNames)
+				return simpleTypeToString(x, opts)
 			}
 		}).join(", ") + "]"
 		case "object":{
-			if(useFullNames && type.fullRefName){
+			if(opts?.fullNames && type.fullRefName){
 				return type.fullRefName
 			} else if(type.refName){
 				return type.refName
@@ -50,20 +58,20 @@ export function simpleTypeToString(type: Runtyper.SimpleType, useFullNames: bool
 					result += "[" + JSON.stringify(propName) + "]: "
 				}
 
-				result += simpleTypeToString(type.properties[propName]!, useFullNames)
+				result += simpleTypeToString(type.properties[propName]!, opts)
 			}
 
 			if(type.index){
 				if(hasProps){
 					result += "; "
 				}
-				result += "[k: " + simpleTypeToString(type.index.keyType, useFullNames) + "]: " + simpleTypeToString(type.index.valueType, useFullNames)
+				result += "[k: " + simpleTypeToString(type.index.keyType, opts) + "]: " + simpleTypeToString(type.index.valueType, opts)
 			}
 
 			return result + "}"
 		}
-		case "union": return "(" + type.types.map(x => simpleTypeToString(x, useFullNames)).join(" | ") + ")"
-		case "intersection": return "(" + type.types.map(x => simpleTypeToString(x, useFullNames)).join(" & ") + ")"
+		case "union": return "(" + type.types.map(x => simpleTypeToString(x, opts)).join(" | ") + ")"
+		case "intersection": return "(" + type.types.map(x => simpleTypeToString(x, opts)).join(" & ") + ")"
 	}
 
 }

@@ -26,7 +26,7 @@ export class TypeSimplifier {
 	private readonly knownRefTypesCache = new Map<string, Runtyper.SimpleType>()
 	private readonly currentlyDefiningRefTypeValues = new Map<string, MutableObjectType>()
 
-	simplify(type: Runtyper.Type, genArgs: GenArgs = {}): Runtyper.SimpleType {
+	simplify(type: Runtyper.Type, genArgs: {[name: string]: Runtyper.SimpleType} = {}): Runtyper.SimpleType {
 		try {
 			this.currentType = type
 			return this.simplifyInternal(type, genArgs, null)
@@ -60,7 +60,7 @@ export class TypeSimplifier {
 					if(!value){
 						return "???"
 					}
-					return simpleTypeToString(value, full)
+					return simpleTypeToString(value, {useLessName: true, fullNames: full})
 				}
 			})
 			refName += "<" + argStrings.join(", ") + ">"
@@ -226,7 +226,7 @@ export class TypeSimplifier {
 			}
 			case "alias":{
 				let result = this.simplifyInternal(type.body, genArgs, ref)
-				if(result.type === "object" && ref){
+				if(ref){
 					result = {
 						...result,
 						fullRefName: ref.fullRefName,
@@ -412,7 +412,7 @@ export class TypeSimplifier {
 		throw new Error(prefix + ": " + msg)
 	}
 
-	private simplifyObject(type: Runtyper.ObjectType | Runtyper.InterfaceDeclaration, genArgs: GenArgs, refInfo: RefInfo | null): Runtyper.SimpleObjectType<Runtyper.SimpleType> {
+	private simplifyObject(type: Runtyper.ObjectType | Runtyper.InterfaceDeclaration, genArgs: GenArgs, refInfo: RefInfo | null): Runtyper.SimpleObjectType<Runtyper.SimpleType> & Runtyper.RefInfo {
 		let result = this.getDefiningObjectOrCreate(refInfo)
 		for(let propName in type.properties){
 			let srcProp = type.properties[propName]!

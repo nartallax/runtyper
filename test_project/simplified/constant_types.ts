@@ -1,23 +1,23 @@
-import {simplifiedTests} from "test_project_main"
+import {simplificationTests} from "test_project_main"
 import {Runtyper} from "runtyper/runtyper"
 import {Fraction, Goodness, MyDogName, MyFalse} from "types/constant_types"
 
-simplifiedTests.push([
+simplificationTests.push([
 	Runtyper.getType<MyFalse>(),
-	{type: "constant", value: false}
+	{type: "constant", value: false, fullRefName: "/types/constant_types:MyFalse", refName: "MyFalse"}
 ])
 
-simplifiedTests.push([
+simplificationTests.push([
 	Runtyper.getType<Goodness>(),
-	{type: "constant_union", value: ["very_good", "moderately_good", "not_good"].sort()}
+	{type: "constant_union", value: ["moderately_good", "not_good", "very_good"], fullRefName: "/types/constant_types:Goodness", refName: "Goodness"}
 ])
 
-simplifiedTests.push([
+simplificationTests.push([
 	Runtyper.getType<MyDogName>(),
-	{type: "constant", value: "I have\" \\ no dog!"}
+	{type: "constant", value: "I have\" \\ no dog!", fullRefName: "/types/constant_types:MyDogName", refName: "MyDogName"}
 ])
 
-simplifiedTests.push([
+simplificationTests.push([
 	Runtyper.getType<Fraction>(),
-	{type: "constant_union", value: [0.5, 1.5, -0.3].sort()}
+	{type: "constant_union", value: [-0.3, 0.5, 1.5], fullRefName: "/types/constant_types:Fraction", refName: "Fraction"}
 ])

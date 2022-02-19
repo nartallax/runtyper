@@ -3,6 +3,7 @@ import {Runtyper} from "entrypoint"
 // functions that work in runtime are living in this file
 
 export const functionsByName = new Map<string, () => void>()
+export const nameByFunctions = new Map<() => void, string>()
 export const valueTypes = new Map<string, Runtyper.Type>()
 export const refTypes = new Map<string, Runtyper.Type>()
 export const attachedValidators = new Map<Runtyper.Type, ((v: unknown) => void)[]>()

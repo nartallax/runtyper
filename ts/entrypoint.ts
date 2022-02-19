@@ -1,5 +1,6 @@
 import {ToolboxTransformer} from "@nartallax/toolbox-transformer"
 import * as runtime from "runtime/runtime"
+import * as TypeStringifier from "runtime/type_stringifier"
 import * as Tsc from "typescript"
 import {RuntyperTricks} from "transformer/tricks"
 import {Transformer, TransParams} from "transformer/transformer"
@@ -27,10 +28,31 @@ export namespace Runtyper {
 	}
 
 	export interface ValidatorBuilderOptions {
-		onUnknown: "throw_on_build" | "allow_anything"
-		onAny: "throw_on_build" | "allow_anything"
-		onUnknownFieldInObject: "validation_error" | "allow_anything"
+		readonly onUnknown: "throw_on_build" | "allow_anything"
+		readonly onAny: "throw_on_build" | "allow_anything"
+		readonly onUnknownFieldInObject: "validation_error" | "allow_anything"
+		readonly onNaNWhenExpectedNumber: "validation_error" | "allow"
 	}
+
+	export interface ValidatorCode {
+		readonly code: string
+		readonly values: readonly ValidatorOuterValue[]
+	}
+
+	export interface ValidatorOuterValue {
+		readonly name: string
+		readonly value: unknown
+	}
+
+
+	export interface SimpleTypeStringificationOptions {
+		/** Use fullRefName instead of refName */
+		fullNames: boolean
+		/** Use names only for objects that have names */
+		useLessName: boolean
+	}
+
+	export const simpleTypeToString: (type: SimpleType, params?: Partial<SimpleTypeStringificationOptions>) => string = TypeStringifier.simpleTypeToString
 
 
 	/** Get description for type T
@@ -51,10 +73,6 @@ export namespace Runtyper {
 	/** Attaches a validator to a type. Validator expected to throw detailed message if anything goes wrong.
 	 * When any kind of validator is built and this type is discovered, call to this validator will be issued. */
 	// export const attachValidator = runtime.attachValidator
-
-	/** Call to this function will indicate no more types are gonna be defined.
-	 * This call will resolve reference functions and check type system for consistency. */
-	// export const finalize = runtime.finalize
 
 	/** Type information about interfaces and type aliases */
 	// export const refTypes: ReadonlyMap<string, Type> = runtime.refTypes
@@ -81,6 +99,7 @@ export namespace Runtyper {
 			for(let [name, value] of pairs){
 				if(typeof(value) === "function"){
 					runtime.functionsByName.set(name, value as () => void)
+					runtime.nameByFunctions.set(value as () => void, name)
 				}
 			}
 		}
@@ -97,6 +116,7 @@ export namespace Runtyper {
 			onAny: "throw_on_build",
 			onUnknown: "throw_on_build",
 			onUnknownFieldInObject: "validation_error",
+			onNaNWhenExpectedNumber: "validation_error",
 			...(opts || {})
 		}
 
@@ -105,6 +125,44 @@ export namespace Runtyper {
 			.join("|")
 
 		return builders[key] ||= new ValidatorBuilder(fullOpts)
+	}
+
+	export class ValidationError extends Error {
+		public readonly badValue: unknown
+		public readonly valuePath: readonly (string | number)[]
+		public readonly validatingExpression: string
+		public readonly sourceValue: unknown
+		constructor(badValue: unknown,
+			valuePath: readonly (string | number)[],
+			validatingExpression: string,
+			sourceValue: unknown) {
+
+			let pathStr = "value" + valuePath
+				.map(x => typeof(x) === "number"
+					? "[" + x + "]"
+					: x.match(/^[a-zA-Z_][a-zA-Z\\d_]*$/)
+						? "." + x
+						: "[" + JSON.stringify(x) + "]")
+				.join("")
+			super("Validation failed: bad value at path " + pathStr + " (of type " + typeof(badValue) + "): failed at expression " + validatingExpression)
+			this.badValue = badValue
+			this.valuePath = valuePath
+			this.validatingExpression = validatingExpression
+			this.sourceValue = sourceValue
+		}
+	}
+
+	/** Erase all of type structure data this code holds in memory
+	 * After this, most of actions related to validator building will be unavailable
+	 * You should do this after building all of validators you need, as this data may hold references to some values that otherwise may be collected by GC */
+	export function cleanup(): void {
+		simplifier = null
+		builders = {}
+		runtime.attachedValidators.clear()
+		runtime.functionsByName.clear()
+		runtime.nameByFunctions.clear()
+		runtime.refTypes.clear()
+		runtime.valueTypes.clear()
 	}
 
 }
@@ -141,14 +199,24 @@ export namespace Runtyper {
 	/** Simplified type information.
 	 * All references, generics, declarations, smart conditions and operations etc are resolved.
 	 * Watch out for recursive references. */
-	export type SimpleType = PrimitiveType
+	export type SimpleType = (PrimitiveType
 	| UnionType<SimpleType>
 	| IntersectionType<SimpleType>
 	| ConstantType
 	| ConstantUnionType
 	| ArrayType<SimpleType>
 	| SimpleTupleType<SimpleType>
-	| SimpleObjectType<SimpleType>
+	| SimpleObjectType<SimpleType>) & RefInfo
+
+	/** Additional information about origin of the type */
+	export interface RefInfo {
+		/** If the type is product of type/value reference, then this field will be filled with the full reference name
+		 * Makes generated code more readable */
+		readonly refName?: string
+		/** Same as refName, just with more info.
+		   * Thought to be unique (two types with same fullRefName should be actually the same) */
+		readonly fullRefName?: string
+	}
 
 	export interface Class {
 		readonly type: "class"
@@ -285,12 +353,6 @@ export namespace Runtyper {
 		readonly type: "object"
 		readonly properties: {readonly [propertyName: string]: T}
 		readonly index?: ObjectIndexType<T>
-		/** If the object is product of type/value reference, then this field will be filled with the full reference name
-		 * Makes generated code more readable */
-		readonly refName?: string
-		/** Same as refName, just with more info.
-		 * Thought to be unique (two objects with same fullRefName should be actually the same) */
-		readonly fullRefName?: string
 	}
 
 	export interface ObjectType extends SimpleObjectType {

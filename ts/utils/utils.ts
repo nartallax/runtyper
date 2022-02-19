@@ -49,8 +49,4 @@ export function deepEquals(a: unknown, b: unknown): boolean {
 	}
 }
 
-export function capitalize(x: string): string {
-	return x.length === 0 ? x : x.charAt(0).toUpperCase() + x.substring(1)
-}
-
 export type RoRecord<T> = {readonly [k: string]: T}
