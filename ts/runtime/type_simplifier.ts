@@ -347,7 +347,10 @@ export class TypeSimplifier {
 					}
 				}
 
-				if(type.heritage){
+				if(!type.heritage){
+					// to avoid copying. see "alias" processing on why it's bad
+					return this.simplifyObject(type, genArgs, ref)
+				} else {
 					for(let parentType of type.heritage){
 						blend(this.simplifyInternal(parentType, genArgs))
 					}

@@ -1,5 +1,6 @@
 import {Runtyper} from "entrypoint"
 import {isValidIdentifier, simpleTypeToString} from "runtime/type_stringifier"
+import {ValidatorUtils} from "runtime/validator_utils"
 import {canBeUndefined, forEachTerminalTypeInUnion, makeUnion} from "utils/simple_type_utils"
 
 let validatorsGeneratedCounter = 0
@@ -24,11 +25,13 @@ interface FunctionValidatorCodePart {
 
 type ValidatorCodePart = ExpressionValidatorCodePart | FunctionValidatorCodePart
 
-interface ErrorValidationResult {
+export interface ErrorValidationResult {
 	value: unknown
 	path: (string | number)[]
 	expression: string
 }
+
+const reservedNames: ReadonlySet<string> = new Set(["i", "propName", "obj", "tuple", "arr"])
 
 export class ValidatorBuilder {
 
@@ -45,15 +48,7 @@ export class ValidatorBuilder {
 		this.functionDeclarations.clear()
 		this.validatorsCache.clear()
 
-		let errDescr = this.makeErrorDescribingFunction()
-		this.functionDeclarations.set(errDescr.declarationName, errDescr)
-
-		// explicitly forbidding some of identifiers to prevent name collision
-		this.usedParamIdentifiers.set("i", {})
-		this.usedParamIdentifiers.set("propName", {})
-		this.usedParamIdentifiers.set("obj", {})
-		this.usedParamIdentifiers.set("tuple", {})
-		this.usedParamIdentifiers.set("arr", {})
+		this.usedParamIdentifiers.set("u", ValidatorUtils)
 	}
 
 	build<T = unknown>(type: Runtyper.SimpleType): (x: unknown) => x is T {
@@ -69,7 +64,7 @@ export class ValidatorBuilder {
 	}
 
 	private isIdentifierInUse(name: string): boolean {
-		return this.usedParamIdentifiers.has(name) || this.functionDeclarations.has(name)
+		return this.usedParamIdentifiers.has(name) || this.functionDeclarations.has(name) || reservedNames.has(name)
 	}
 
 	private makeParam(suggestedName: string, value: unknown): Runtyper.ValidatorOuterValue {
@@ -137,20 +132,13 @@ export class ValidatorBuilder {
 		}
 	}
 
-	private readonly errorDescriptionFnName = "fail"
-	private makeErrorDescribingFunction(): FunctionValidatorCodePart {
-		return {
-			isExpression: false,
-			declarationName: this.errorDescriptionFnName,
-			declaration: `/* make error description structure */
-function ${this.errorDescriptionFnName}(value, expression){
-	return {value, path: [], expression}
-}`
+	private makeDescribeErrorCall(valueCode: string, exprCode: string, propName?: string): string {
+		let result = `u.err(${valueCode}, ${JSON.stringify(exprCode)}`
+		if(propName !== undefined){
+			result += `, ${JSON.stringify(propName)}`
 		}
-	}
-
-	private makeDescribeErrorCall(valueCode: string, exprCode: string): string {
-		return `${this.errorDescriptionFnName}(${valueCode}, ${JSON.stringify(exprCode)})`
+		result += ")"
+		return result
 	}
 
 	private validatorToExpressionCode(validator: ValidatorCodePart, valueCode: string): string {
@@ -161,7 +149,7 @@ function ${this.errorDescriptionFnName}(value, expression){
 		}
 	}
 
-	private validatorToCondition(validator: ValidatorCodePart, valueCode: string): string {
+	private validatorToConditionCode(validator: ValidatorCodePart, valueCode: string): string {
 		if(validator.isExpression){
 			return validator.condition(valueCode)
 		} else {
@@ -170,19 +158,11 @@ function ${this.errorDescriptionFnName}(value, expression){
 	}
 
 	private makeValidatorFnComment(type: Runtyper.SimpleType): string {
-		if(!type.refName){
-			return ""
-		} else {
-			return this.makeComment("for " + type.refName) + "\n"
-		}
+		return type.refName ? this.makeComment("for " + type.refName) + "\n" : ""
 	}
 
 	private makeRoughTypeName(type: Runtyper.SimpleType, dflt: string): string {
-		if(type.refName && type.refName.length < 30){
-			return type.refName
-		} else {
-			return dflt
-		}
+		return type.refName && type.refName.length <= 30 ? type.refName : dflt
 	}
 
 	private buildOrGetCachedCode(type: Runtyper.SimpleType, suggestedValueName: string, build: (base: FunctionValidatorCodePart) => void): ValidatorCodePart {
@@ -278,7 +258,7 @@ function ${this.errorDescriptionFnName}(value, expression){
 			}
 			case "constant_union":{
 				let set = new Set(type.value)
-				let constrVal = this.makeParam("allowedValues", set)
+				let constrVal = this.makeParam("allowed_values", set)
 				return this.conditionToExpression(
 					valueCode => `${constrVal.name}.has(${valueCode})`,
 					[constrVal]
@@ -294,7 +274,7 @@ function ${this.errorDescriptionFnName}(value, expression){
 					isExpression: true,
 					values: this.valuesOfExpressions(typeCode),
 					condition: valueCode => "("
-						+ typeCode.map(type => this.validatorToCondition(type, valueCode)).join(" || ")
+						+ typeCode.map(type => this.validatorToConditionCode(type, valueCode)).join(" || ")
 						+ ")",
 					expression: valueCode => "("
 						+ typeCode.map(type => this.validatorToExpressionCode(type, valueCode)).join(" || ")
@@ -308,7 +288,7 @@ function ${this.errorDescriptionFnName}(value, expression){
 				}
 				let typeCode = fixedType.types.map(type => this.buildCodePart(type))
 				return this.conditionToExpression(valueCode => "("
-					+ typeCode.map(type => this.validatorToCondition(type, valueCode)).join(" && ")
+					+ typeCode.map(type => this.validatorToConditionCode(type, valueCode)).join(" && ")
 					+ ")"
 				, this.valuesOfExpressions(typeCode))
 			}
@@ -586,7 +566,7 @@ function ${this.errorDescriptionFnName}(value, expression){
 			} else {
 				throw new Runtyper.ValidationError(
 					result.value,
-					result.path,
+					result.path.reverse(),
 					result.expression,
 					value
 				)
