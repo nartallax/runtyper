@@ -1,7 +1,7 @@
 import {Runtyper} from "runtyper/runtyper"
 
 export const simplificationTests = [] as [Runtyper.Type, (Runtyper.SimpleType | string)][]
-export const codeGenerationTests = [] as [Runtyper.Type, string, Partial<Runtyper.ValidatorBuilderOptions>?][]
+export const codeGenerationTests = [] as [Runtyper.Type, string, Partial<Runtyper.ValidatorBuilderOptions & {ensureAbsent: boolean}>?][]
 
 export function main(): void {
 
@@ -64,7 +64,8 @@ function runCodeGenerationTests(): number {
 		try {
 			let builder = Runtyper.getValidatorBuilder(mbOptions)
 			let code = builder.buildCode(Runtyper.getSimplifier().simplify(type))
-			if(code.code.indexOf(result) < 0){
+			let hasFragment = code.code.indexOf(result) < 0
+			if(hasFragment === !(mbOptions?.ensureAbsent)){
 				console.error("\nCode generation test failed:")
 				console.error("source: " + JSON.stringify(type))
 				console.error("expected: " + result)
@@ -72,13 +73,16 @@ function runCodeGenerationTests(): number {
 				failCount++
 			}
 		} catch(e){
-			if(e instanceof Error && e.message.indexOf(result) < 0){
-				console.error("\nCode generation test failed:")
-				console.error("source: " + JSON.stringify(type))
-				console.error("expected: " + result)
-				console.error("got error text: " + e.message)
-				console.error("stack: " + e.stack)
-				failCount++
+			if(e instanceof Error){
+				let hasFragment = e.message.indexOf(result) < 0
+				if(hasFragment === !(mbOptions?.ensureAbsent)){
+					console.error("\nCode generation test failed:")
+					console.error("source: " + JSON.stringify(type))
+					console.error("expected: " + result)
+					console.error("got error text: " + e.message)
+					console.error("stack: " + e.stack)
+					failCount++
+				}
 			}
 		}
 	}

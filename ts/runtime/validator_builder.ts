@@ -92,6 +92,7 @@ export class ValidatorBuilder {
 			.replace(/[\s>,.:]/g, "_")
 			.replace(/[^a-zA-Z\d_]/, "")
 			.replace(/_+/g, "_")
+			.replace(/^_|_$/g, "")
 	}
 
 	private makeComment(text: string): string {
@@ -165,6 +166,22 @@ function ${this.errorDescriptionFnName}(value, expression){
 			return validator.condition(valueCode)
 		} else {
 			return validator.declarationName + "(" + valueCode + ")"
+		}
+	}
+
+	private makeValidatorFnComment(type: Runtyper.SimpleType): string {
+		if(!type.refName){
+			return ""
+		} else {
+			return this.makeComment("for " + type.refName) + "\n"
+		}
+	}
+
+	private makeRoughTypeName(type: Runtyper.SimpleType, dflt: string): string {
+		if(type.refName && type.refName.length < 30){
+			return type.refName
+		} else {
+			return dflt
 		}
 	}
 
@@ -297,8 +314,9 @@ function ${this.errorDescriptionFnName}(value, expression){
 			}
 
 
-			case "array":
-				return this.buildOrGetCachedCode(type, "array", fnDecl => {
+			case "array":{
+				let roughName = this.makeRoughTypeName(type, "object")
+				return this.buildOrGetCachedCode(type, roughName, fnDecl => {
 					let paramName = "arr"
 					let indexedParamName = paramName + "[i]"
 					let valueCond = this.buildCodePart(type.valueType)
@@ -306,7 +324,8 @@ function ${this.errorDescriptionFnName}(value, expression){
 					let initialCheck = `!Array.isArray(${paramName})`
 
 					fnDecl.values = this.valuesOfExpressions([valueCond])
-					fnDecl.declaration = `function ${fnDecl.declarationName}(${paramName}){
+					let comment = this.makeValidatorFnComment(type)
+					fnDecl.declaration = `${comment}function ${fnDecl.declarationName}(${paramName}){
 	if(${initialCheck}){
 		return ${this.makeDescribeErrorCall(paramName, initialCheck)}
 	}
@@ -324,19 +343,13 @@ function ${this.errorDescriptionFnName}(value, expression){
 	return false
 }`
 				})
+			}
 
 
 			case "object":{
-				let rawName = "object"
-				if(type.refName && type.refName.length < 30){
-					rawName = type.refName
-				}
-				return this.buildOrGetCachedCode(type, rawName, fnDecl => {
+				let roughName = this.makeRoughTypeName(type, "object")
+				return this.buildOrGetCachedCode(type, roughName, fnDecl => {
 					let paramName = "obj"
-					let comment = ""
-					if(type.refName){
-						comment = this.makeComment("for " + type.refName) + "\n"
-					}
 
 					let values: Runtyper.ValidatorOuterValue[] = []
 					let fixedKeys = Object.keys(type.properties)
@@ -360,6 +373,7 @@ function ${this.errorDescriptionFnName}(value, expression){
 					})
 
 					// known keys may be a part of index, let's also check that
+					// (type_simplifier does not yield constant keys in index btw, but still, let's check index key type)
 					let hasStringIndex = false
 					if(type.index){
 						forEachTerminalTypeInUnion(type.index.keyType, keySubtype => {
@@ -378,9 +392,14 @@ function ${this.errorDescriptionFnName}(value, expression){
 					}
 
 					let setOfFieldNames: Runtyper.ValidatorOuterValue | null = null
+					let skipKnownPropCode = ""
 					if(fixedKeys.length > 0){
-						setOfFieldNames = this.makeParam(this.makeIdentifierCodeSafe("known_fields_of_" + rawName), new Set(fixedKeys))
+						setOfFieldNames = this.makeParam(this.makeIdentifierCodeSafe("known_fields_of_" + roughName), new Set(fixedKeys))
 						values.push(setOfFieldNames)
+						skipKnownPropCode = `
+		if(${setOfFieldNames.name}.has(propName)){
+			continue
+		}`
 					}
 
 					// building code that checks unknown keys
@@ -388,7 +407,7 @@ function ${this.errorDescriptionFnName}(value, expression){
 					if(this.opts.onUnknownFieldInObject === "allow_anything"){
 						unlistedPropsCheckingCode = ""
 					} else if(!hasStringIndex){
-						unlistedPropsCheckingCode = `
+						unlistedPropsCheckingCode = `${skipKnownPropCode}
 		checkResult = ${this.makeDescribeErrorCall(paramName + "[propName]", "<unknown field found>")}
 		checkResult.path.push(propName)
 		return checkResult`
@@ -396,21 +415,15 @@ function ${this.errorDescriptionFnName}(value, expression){
 						let propCond = this.buildCodePart(type.index!.valueType)
 						propConds.push(propCond)
 						let indexTypeChecker = this.validatorToExpressionCode(propCond, paramName + "[propName]")
-						unlistedPropsCheckingCode = `
+						unlistedPropsCheckingCode = `${skipKnownPropCode}
 		checkResult = ${indexTypeChecker}
 		if(checkResult){
 			checkResult.path.push(propName)
 			return checkResult
 		}
 		`
-						if(setOfFieldNames){
-							unlistedPropsCheckingCode = `
-		if(!${setOfFieldNames.name}.has(propName)){
-			continue
-		}` + unlistedPropsCheckingCode
-						}
 					}
-					unlistedPropsCheckingCode = `for(var propName in ${paramName}){${unlistedPropsCheckingCode}}`
+					unlistedPropsCheckingCode = `for(var propName in ${paramName}){${unlistedPropsCheckingCode}\n\t}`
 
 					let initialCheck = `${paramName} === null || typeof(${paramName}) !== "object" || Array.isArray(${paramName})`
 
@@ -419,6 +432,7 @@ function ${this.errorDescriptionFnName}(value, expression){
 						fnDecl.values = values
 					}
 
+					let comment = this.makeValidatorFnComment(type)
 					fnDecl.declaration = `${comment}function ${fnDecl.declarationName}(${paramName}){
 	if(${initialCheck}){
 		return ${this.makeDescribeErrorCall(paramName, initialCheck)}
@@ -434,58 +448,60 @@ function ${this.errorDescriptionFnName}(value, expression){
 				})
 			}
 
-			case "tuple": return this.buildOrGetCachedCode(type, "tuple", fnDecl => {
-				let paramName = "tuple"
-				let minLength = 0
-				let maxLength = 0
+			case "tuple":{
+				let roughName = this.makeRoughTypeName(type, "tuple")
+				return this.buildOrGetCachedCode(type, roughName, fnDecl => {
+					let paramName = "tuple"
+					let minLength = 0
+					let maxLength = 0
 
-				let restCheckerCode = ""
-				let fixedCheckersCode = [] as string[]
-				let propConds = [] as ValidatorCodePart[]
+					let restCheckerCode = ""
+					let fixedCheckersCode = [] as string[]
+					let propConds = [] as ValidatorCodePart[]
 
-				let makeFixedChecker = (index: number, propType: Runtyper.SimpleType): void => {
-					let propCond = this.buildCodePart(propType)
-					propConds.push(propCond)
-					let code = `
+					let makeFixedChecker = (index: number, propType: Runtyper.SimpleType): void => {
+						let propCond = this.buildCodePart(propType)
+						propConds.push(propCond)
+						let code = `
 	checkResult = ${this.validatorToExpressionCode(propCond, paramName + "[" + index + "]")}
 	if(checkResult){
 		checkResult.path.push(${index})
 		return checkResult
 	}`
-					fixedCheckersCode.push(code)
-				}
-
-				let rest: Runtyper.RestType<Runtyper.SimpleType> | null = null
-				for(let i = 0; i < type.valueTypes.length; i++){
-					let vtype = type.valueTypes[i]!
-					if(vtype.type === "rest"){
-						minLength = i
-						maxLength = Number.MAX_SAFE_INTEGER
-						rest = vtype
-						break
-					} else {
-						maxLength = i + 1
-						if(!canBeUndefined(vtype)){
-							minLength = i + 1
-						}
-						makeFixedChecker(i, vtype)
+						fixedCheckersCode.push(code)
 					}
-				}
 
-				if(rest){
-					let tailOffset = 0
-					for(let i = type.valueTypes.length - 1; i > minLength; i--){
+					let rest: Runtyper.RestType<Runtyper.SimpleType> | null = null
+					for(let i = 0; i < type.valueTypes.length; i++){
 						let vtype = type.valueTypes[i]!
 						if(vtype.type === "rest"){
-							throw new Error("Cannot build validator: tuple has more than one rest value: " + simpleTypeToString(type, {fullNames: false}))
+							minLength = i
+							maxLength = Number.MAX_SAFE_INTEGER
+							rest = vtype
+							break
+						} else {
+							maxLength = i + 1
+							if(!canBeUndefined(vtype)){
+								minLength = i + 1
+							}
+							makeFixedChecker(i, vtype)
 						}
-						makeFixedChecker(i, vtype)
-						minLength = Math.max(minLength, i)
-						tailOffset++
 					}
-					let restCond = this.buildCodePart(rest.valueType)
-					propConds.push(restCond)
-					restCheckerCode = `
+
+					if(rest){
+						let tailOffset = 0
+						for(let i = type.valueTypes.length - 1; i > minLength; i--){
+							let vtype = type.valueTypes[i]!
+							if(vtype.type === "rest"){
+								throw new Error("Cannot build validator: tuple has more than one rest value: " + simpleTypeToString(type, {fullNames: false}))
+							}
+							makeFixedChecker(i, vtype)
+							minLength = Math.max(minLength, i)
+							tailOffset++
+						}
+						let restCond = this.buildCodePart(rest.valueType)
+						propConds.push(restCond)
+						restCheckerCode = `
 	for(var i = ${minLength}; i < ${minLength - tailOffset}; i++){
 		checkResult = ${this.validatorToExpressionCode(restCond, paramName + "[i]")}
 		if(checkResult){
@@ -493,17 +509,18 @@ function ${this.errorDescriptionFnName}(value, expression){
 			return checkResult
 		}
 	}`
-				}
+					}
 
-				let initialCheck = `!Array.isArray(${paramName})`
-				let lenCheck = minLength === maxLength
-					? `${paramName}.length !== ${minLength}`
-					: maxLength === Number.MAX_SAFE_INTEGER
-						? `${paramName}.length < ${minLength}`
-						: `${paramName}.length < ${minLength} || ${paramName}.length > ${maxLength}`
+					let initialCheck = `!Array.isArray(${paramName})`
+					let lenCheck = minLength === maxLength
+						? `${paramName}.length !== ${minLength}`
+						: maxLength === Number.MAX_SAFE_INTEGER
+							? `${paramName}.length < ${minLength}`
+							: `${paramName}.length < ${minLength} || ${paramName}.length > ${maxLength}`
 
-				fnDecl.values = this.valuesOfExpressions(propConds)
-				fnDecl.declaration = `function ${fnDecl.declarationName}(${paramName}){
+					fnDecl.values = this.valuesOfExpressions(propConds)
+					let comment = this.makeValidatorFnComment(type)
+					fnDecl.declaration = `${comment}function ${fnDecl.declarationName}(${paramName}){
 	if(${initialCheck}){
 		return ${this.makeDescribeErrorCall(paramName, initialCheck)}
 	}
@@ -519,7 +536,8 @@ function ${this.errorDescriptionFnName}(value, expression){
 
 	return false
 }`
-			})
+				})
+			}
 
 		}
 	}

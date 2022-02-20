@@ -11,3 +11,5 @@ export type Tuple9 = [count?: number, length?: number, ...anythingElse: Array<st
 export type TupleVal1 = Tuple1[0]
 export type TupleVal2 = Tuple2[2]
 export type TupleVal3 = Tuple3[2]
+
+export type TwoTuples = [number, string] | [boolean, boolean, null]

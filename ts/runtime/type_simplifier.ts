@@ -37,11 +37,11 @@ export class TypeSimplifier {
 	}
 
 	private makeRefName(reference: Runtyper.TypeReferenceType, target: {typeParameters?: Runtyper.TypeParameter[]}, newGenArgs: GenArgs, full: boolean): string {
-		// a little hackish, but whatever
 		let refName: string
 		if(full){
 			refName = reference.name
 		} else {
+			// a little hackish, but whatever
 			let refParts = reference.name.split(":")
 			refName = refParts[refParts.length - 1] || ""
 		}
@@ -226,7 +226,12 @@ export class TypeSimplifier {
 			}
 			case "alias":{
 				let result = this.simplifyInternal(type.body, genArgs, ref)
-				if(ref){
+				if(ref && (result.fullRefName !== ref.fullRefName || result.refName !== ref.refName)){
+					// not creating new values is good
+					// not only because of memory consumption, also because of a trick with mutable objects
+					// when you copy object just to rename, two instances of the same type are made
+					// which is not great, because it leads to duplicate code generation
+					// (it will still work, though)
 					result = {
 						...result,
 						fullRefName: ref.fullRefName,
