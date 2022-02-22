@@ -2,6 +2,7 @@ import {Runtyper} from "entrypoint"
 import {isValidIdentifier, simpleTypeToString} from "runtime/type_stringifier"
 import {ValidatorUtils} from "runtime/validator_utils"
 import {canBeUndefined, forEachTerminalTypeInUnion, makeUnion} from "utils/simple_type_utils"
+import {deepEquals} from "utils/utils"
 
 let validatorsGeneratedCounter = 0
 
@@ -72,7 +73,7 @@ export class ValidatorBuilder {
 		let name = suggestedName
 		while(this.isIdentifierInUse(name)){
 			let oldValue = this.usedParamIdentifiers.get(name)
-			if(oldValue === value){
+			if(deepEquals(oldValue, value)){
 				return {name, value}
 			} else {
 				name = suggestedName + "_" + (counter++)
@@ -260,7 +261,7 @@ export class ValidatorBuilder {
 				let set = new Set(type.value)
 				let constrVal = this.makeParam("allowed_values", set)
 				return this.conditionToExpression(
-					valueCode => `${constrVal.name}.has(${valueCode})`,
+					valueCode => `!${constrVal.name}.has(${valueCode})`,
 					[constrVal]
 				)
 			}
@@ -311,7 +312,6 @@ export class ValidatorBuilder {
 	}
 
 	var len = ${paramName}.length
-	var lastPathEl = path.length - 1
 	var checkResult
 	for(var i = 0; i < len; i++){
 		checkResult = ${valueExpr}
@@ -361,7 +361,10 @@ export class ValidatorBuilder {
 								if(typeof(keySubtype.value) !== "string"){
 									throw new Error("Cannot build validator: constant key of object is not string: " + JSON.stringify(keySubtype.value) + " (of type " + typeof(keySubtype.value) + ")")
 								}
-								fixedKeysCheckingParts.push(makeFixedKeyCheckerCode(keySubtype.value, type.index!.valueType))
+								fixedKeysCheckingParts.push(makeFixedKeyCheckerCode(
+									keySubtype.value,
+									makeUnion([type.index!.valueType, {type: "constant", value: undefined}])
+								))
 								fixedKeys.push(keySubtype.value)
 							} else if(keySubtype.type === "string"){
 								hasStringIndex = true
@@ -439,23 +442,25 @@ export class ValidatorBuilder {
 					let fixedCheckersCode = [] as string[]
 					let propConds = [] as ValidatorCodePart[]
 
-					let makeFixedChecker = (index: number, propType: Runtyper.SimpleType): void => {
+					let makeFixedChecker = (index: number, propType: Runtyper.SimpleType, fromTail = false): void => {
 						let propCond = this.buildCodePart(propType)
 						propConds.push(propCond)
+						let indexCode = fromTail ? paramName + ".length - " + index : (index + "")
 						let code = `
-	checkResult = ${this.validatorToExpressionCode(propCond, paramName + "[" + index + "]")}
+	checkResult = ${this.validatorToExpressionCode(propCond, paramName + "[" + indexCode + "]")}
 	if(checkResult){
-		checkResult.path.push(${index})
+		checkResult.path.push(${indexCode})
 		return checkResult
 	}`
 						fixedCheckersCode.push(code)
 					}
 
+					let restStartsAt: number | null = null
 					let rest: Runtyper.RestType<Runtyper.SimpleType> | null = null
 					for(let i = 0; i < type.valueTypes.length; i++){
 						let vtype = type.valueTypes[i]!
 						if(vtype.type === "rest"){
-							minLength = i
+							restStartsAt = i
 							maxLength = Number.MAX_SAFE_INTEGER
 							rest = vtype
 							break
@@ -468,21 +473,21 @@ export class ValidatorBuilder {
 						}
 					}
 
-					if(rest){
+					if(rest !== null && restStartsAt !== null){
 						let tailOffset = 0
-						for(let i = type.valueTypes.length - 1; i > minLength; i--){
+						for(let i = type.valueTypes.length - 1; i > restStartsAt; i--){
 							let vtype = type.valueTypes[i]!
 							if(vtype.type === "rest"){
 								throw new Error("Cannot build validator: tuple has more than one rest value: " + simpleTypeToString(type, {fullNames: false}))
 							}
-							makeFixedChecker(i, vtype)
+							makeFixedChecker(type.valueTypes.length - i, vtype, true)
 							minLength = Math.max(minLength, i)
 							tailOffset++
 						}
 						let restCond = this.buildCodePart(rest.valueType)
 						propConds.push(restCond)
 						restCheckerCode = `
-	for(var i = ${minLength}; i < ${minLength - tailOffset}; i++){
+	for(var i = ${restStartsAt}; i < tuple.length${tailOffset === 0 ? "" : " - " + tailOffset}; i++){
 		checkResult = ${this.validatorToExpressionCode(restCond, paramName + "[i]")}
 		if(checkResult){
 			checkResult.path.push(i)
@@ -524,12 +529,9 @@ export class ValidatorBuilder {
 
 	private buildFullCode(rootType: Runtyper.SimpleType): Runtyper.ValidatorCode {
 		let rootValidator = this.buildCodePart(rootType)
-		let allValues = this.valuesOfExpressions([rootValidator]) || []
-		for(let [, decl] of this.functionDeclarations){
-			if(decl.values){
-				allValues.push(...decl.values)
-			}
-		}
+		let allValues = [...this.usedParamIdentifiers].map(([name, value]) => {
+			return {name, value} as Runtyper.ValidatorOuterValue
+		})
 
 		let code = ""
 

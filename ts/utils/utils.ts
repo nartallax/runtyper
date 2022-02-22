@@ -27,6 +27,39 @@ export function deepEquals(a: unknown, b: unknown): boolean {
 				return true
 			}
 
+			if(a instanceof Set || b instanceof Set){
+				if(!(a instanceof Set) || !(b instanceof Set)){
+					return false
+				}
+				if(a.size !== b.size){
+					return false
+				}
+				for(let v of a){
+					if(!b.has(v)){
+						return false
+					}
+				}
+				return true
+			}
+
+			if(a instanceof Map || b instanceof Map){
+				if(!(a instanceof Map) || !(b instanceof Map)){
+					return false
+				}
+				if(a.size !== b.size){
+					return false
+				}
+				for(let [k, v] of a){
+					if(!b.has(k)){
+						return false
+					}
+					if(!deepEquals(v, b.get(k)!)){
+						return false
+					}
+				}
+				return true
+			}
+
 			if(!a || !b){ // проверка на null
 				return false
 			}

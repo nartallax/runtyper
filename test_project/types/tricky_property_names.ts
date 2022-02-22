@@ -1,7 +1,6 @@
 const {x: propname} = {x: "pew-pew\"-pew" as const}
 
 export interface TrickyProperties {
-	[propname]: number
 	ыыыы: number
 	"\"": number
 	// eslint-disable-next-line @typescript-eslint/quotes
@@ -19,4 +18,8 @@ export interface TrickyProperties {
 	0.00000005: number
 	0.000000005: number
 	50000000000000000000000: number // this is also should trigger scientific notation
+}
+
+export interface ConstStringPropName {
+	[propname]: number
 }

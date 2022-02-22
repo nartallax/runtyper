@@ -394,7 +394,10 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 				if(!member.type){
 					return this.fail("No explicit member signature type: ", member)
 				}
-				let propName = this.tricks.propertyNameToString(member.name) || member.name.getText()
+				let propName = this.tricks.propertyNameToString(member.name)
+				if(!propName){
+					return this.fail("Unsupported property name: " + member.name.getText())
+				}
 
 				props[propName] = {
 					...this.describeType(member.type),

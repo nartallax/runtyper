@@ -2,10 +2,11 @@ import {Runtyper} from "runtyper/runtyper"
 
 export const simplificationTests = [] as [Runtyper.Type, (Runtyper.SimpleType | string)][]
 export const codeGenerationTests = [] as [Runtyper.Type, string, Partial<Runtyper.ValidatorBuilderOptions & {ensureAbsent: boolean}>?][]
+export const validationTests = [] as [Runtyper.Type, unknown, string | null, Partial<Runtyper.ValidatorBuilderOptions>?][]
 
 export function main(): void {
 
-	let failedCount = runSimplificationTests() + runCodeGenerationTests()
+	let failedCount = runSimplificationTests() + runCodeGenerationTests() + runValidationTests()
 
 	if(failedCount === 0){
 		console.error("Testing successful.")
@@ -21,7 +22,6 @@ export function main(): void {
 function runSimplificationTests(): number {
 	let failedCount = 0
 	for(let [srcType, result] of simplificationTests){
-		// console.log("running simplification test: ", srcType)
 		try {
 			let simplifiedStructure = Runtyper.getSimplifier().simplify(srcType)
 			// console.dir(simplifiedStructure, {depth: null})
@@ -39,7 +39,10 @@ function runSimplificationTests(): number {
 				failedCount++
 			}
 		} catch(e){
-			if(!(e instanceof Error) || typeof(result) !== "string"){
+			if(!(e instanceof Error)){
+				throw e
+			}
+			if(typeof(result) !== "string"){
 				console.error("\nSimplification test failed:")
 				console.error("source: " + JSON.stringify(srcType))
 				console.error("stack: " + (e as Error).stack)
@@ -73,16 +76,58 @@ function runCodeGenerationTests(): number {
 				failCount++
 			}
 		} catch(e){
-			if(e instanceof Error){
-				let hasFragment = e.message.indexOf(result) < 0
-				if(hasFragment === !(mbOptions?.ensureAbsent)){
-					console.error("\nCode generation test failed:")
-					console.error("source: " + JSON.stringify(type))
-					console.error("expected: " + result)
-					console.error("got error text: " + e.message)
-					console.error("stack: " + e.stack)
-					failCount++
-				}
+			if(!(e instanceof Error)){
+				throw e
+			}
+			let hasFragment = e.message.indexOf(result) < 0
+			if(hasFragment === !(mbOptions?.ensureAbsent)){
+				console.error("\nCode generation test failed:")
+				console.error("source: " + JSON.stringify(type))
+				console.error("expected: " + result)
+				console.error("got error text: " + e.message)
+				console.error("stack: " + e.stack)
+				failCount++
+			}
+		}
+	}
+	return failCount
+}
+
+function runValidationTests(): number {
+	let failCount = 0
+	for(let [type, value, expectedResult, mbOptions] of validationTests){
+		try {
+			let builder = Runtyper.getValidatorBuilder(mbOptions)
+			let validator = builder.build(Runtyper.getSimplifier().simplify(type))
+			validator(value)
+			if(expectedResult !== null){
+				console.error("\nValidation test failed:")
+				console.error("type: " + JSON.stringify(type))
+				console.error("value: " + JSON.stringify(value))
+				console.error("expected error: " + expectedResult)
+				console.error("got no error")
+				failCount++
+			}
+		} catch(e){
+			if(!(e instanceof Error)){
+				throw e
+			}
+			if(expectedResult === null){
+				console.error("\nValidation test failed:")
+				console.error("type: " + JSON.stringify(type))
+				console.error("value: " + JSON.stringify(value))
+				console.error("expected no error")
+				console.error("got error text: " + e.message)
+				// console.error("stack: " + e.stack)
+				failCount++
+			} else if(e.message.indexOf(expectedResult) < 0){
+				console.error("\nValidation test failed:")
+				console.error("type: " + JSON.stringify(type))
+				console.error("value: " + JSON.stringify(value))
+				console.error("expected error: " + expectedResult)
+				console.error("got error text: " + e.message)
+				// console.error("stack: " + e.stack)
+				failCount++
 			}
 		}
 	}

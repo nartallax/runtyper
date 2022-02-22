@@ -117,3 +117,7 @@ export function canBeUndefined(type: Runtyper.SimpleType): boolean {
 	})
 	return hasUndefined
 }
+
+// export function simplifyIntersection(type: Runtyper.IntersectionType): Runtyper.SimpleType {
+
+// }
