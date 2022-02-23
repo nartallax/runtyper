@@ -118,6 +118,88 @@ export function canBeUndefined(type: Runtyper.SimpleType): boolean {
 	return hasUndefined
 }
 
-// export function simplifyIntersection(type: Runtyper.IntersectionType): Runtyper.SimpleType {
+// export function simplifyIntersection(type: Runtyper.IntersectionType<Runtyper.SimpleType>): Runtyper.SimpleType {
+// 	if(type.types.length === 1){
+// 		let firstType = type.types[0]!
+// 		return firstType.type === "intersection" ? simplifyIntersection(firstType) : firstType
+// 	} else if(type.types.length === 0){
+// 		return {type: "never"}
+// 	}
+// 	let hasAny = false, hasUnknown = false, hasNever = false
+// 	let consts = null as Set<Runtyper.ConstantType["value"]> | null
+// 	let primitiveTypes = null as null | Set<"string" | "number" | "boolean" | "object" | "array">
+// 	let objectTypes = [] as Runtyper.SimpleObjectType<Runtyper.SimpleType>[]
 
+// 	let addSubtype = (subtype: Runtyper.SimpleType): void => {
+// 		switch(subtype.type){
+// 			case "constant":{
+// 				consts = !consts || consts.has(subtype.value) ? new Set([subtype.value]) : new Set()
+// 				break
+// 			}
+// 			case "constant_union":{
+// 				if(!consts){
+// 					consts = new Set(subtype.value)
+// 				} else {
+// 					let unionVals = new Set(subtype.value)
+// 					for(let v of [...consts]){
+// 						if(!unionVals.has(v)){
+// 							consts.delete(v)
+// 						}
+// 					}
+// 				}
+// 				break
+// 			}
+// 			case "any":
+// 				hasAny = true
+// 				break
+// 			case "unknown":
+// 				hasUnknown = true
+// 				break
+// 			case "never":
+// 				hasNever = true
+// 				break
+// 			case "string":
+// 			case "number":
+// 			case "boolean":
+// 				primitiveTypes = !primitiveTypes || primitiveTypes.has(subtype.type) ? new Set([subtype.type]) : new Set()
+// 				break
+// 			case "object":
+// 				primitiveTypes = !primitiveTypes || primitiveTypes.has(subtype.type) ? new Set([subtype.type]) : new Set()
+// 				objectTypes.push(subtype)
+// 				break
+// 			case "tuple":
+// 			case "array":
+// 				primitiveTypes = !primitiveTypes || primitiveTypes.has("array") ? new Set(["array"]) : new Set()
+// 				break
+// 			case "intersection":
+// 				addSubtype(subtype)
+// 				break
+// 			case "union":{
+// 				let unionConsts = new Set<Runtyper.ConstantType["value"]>()
+// 				let unionPrimitives = new Set<"string" | "number" | "boolean" | "object" | "array">()
+// 				forEachTerminalTypeInUnion(subtype, subsubtype => {
+// 					switch(subsubtype.type){
+// 						case "constant":
+// 							unionConsts.add(subsubtype.value)
+// 							break
+// 						case "string":
+// 						case "number":
+// 						case "boolean":
+// 						case "object":
+// 							unionPrimitives.add(subsubtype.type)
+// 							break
+// 						case "array":
+// 						case "tuple":
+// 							unionPrimitives.add("array")
+// 							break
+// 						case "
+// 					}
+// 				})
+// 			}
+// 		}
+
+// 		for(let subtype of type.types){
+// 			addSubtype(subtype)
+// 		}
+// 	}
 // }
