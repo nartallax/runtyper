@@ -106,7 +106,7 @@ validationTests.push([
 validationTests.push([
 	Runtyper.getType<NotManyMath>(),
 	{x: 5, y: 10, z: 15},
-	null
+	"bad value at path value.y (of type number): failed at expression <unknown field found>"
 ])
 
 // TODO: test this:

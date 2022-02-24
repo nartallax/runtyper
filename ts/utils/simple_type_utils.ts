@@ -76,6 +76,16 @@ export function forEachTerminalTypeInUnion(type: Runtyper.SimpleType, handler: (
 	}
 }
 
+export function forEachTerminalTypeInUnionIntersection(type: Runtyper.SimpleType, handler: (type: Runtyper.SimpleType) => void): void {
+	if(type.type === "union" || type.type === "intersection"){
+		type.types.forEach(subtype => forEachTerminalTypeInUnionIntersection(subtype, handler))
+	} else if(type.type === "constant_union"){
+		type.value.forEach(v => handler({type: "constant", value: v}))
+	} else {
+		handler(type)
+	}
+}
+
 export function removeTypesFromUnion(type: Runtyper.SimpleType, shouldBeRemoved: (simpleType: Runtyper.SimpleType) => boolean): Runtyper.SimpleType {
 	let dropped = false
 	let resultTypePack = [] as Runtyper.SimpleType[]

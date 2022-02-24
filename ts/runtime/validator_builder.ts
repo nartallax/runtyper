@@ -1,7 +1,7 @@
 import {Runtyper} from "entrypoint"
 import {isValidIdentifier, simpleTypeToString} from "runtime/type_stringifier"
 import {ValidatorUtils} from "runtime/validator_utils"
-import {canBeUndefined, forEachTerminalTypeInUnion, makeUnion} from "utils/simple_type_utils"
+import {canBeUndefined, forEachTerminalTypeInUnion, forEachTerminalTypeInUnionIntersection, makeUnion} from "utils/simple_type_utils"
 import {deepEquals} from "utils/utils"
 
 let validatorsGeneratedCounter = 0
@@ -30,7 +30,18 @@ export interface ErrorValidationResult {
 	expression: string
 }
 
-const reservedNames: ReadonlySet<string> = new Set(["checkResult", "i", "propName", "obj", "tuple", "arr", "value", "intersectionData", "parentIntersectionData", "fieldSet"])
+const reservedNames: ReadonlySet<string> = new Set(["checkResult", "i", "propName", "obj", "tuple", "arr", "value", "fieldSet", "parentFieldSet"])
+
+// sometimes `fieldSet` is not defined inside of functions
+// but I want to pass it to function invocations even if it's not present in the enclosing function
+// so here I declare "default" value of fieldSet
+// and now I can instead of `typeof(fieldSet) === "undefined"? undefined: fieldSet`
+// just write `fieldSet`, because it will be undefined by default and won't generate error
+const codePreamble = `
+var fieldSet = undefined
+`
+
+let addIdentation = (code: string) => code.replace(/\n/g, "\n\t")
 
 export class ValidatorBuilder {
 
@@ -130,10 +141,12 @@ export class ValidatorBuilder {
 		}
 	}
 
-	private makeDescribeErrorCall(valueCode: string, exprCode: string, propName?: string): string {
+	private makeDescribeErrorCall(valueCode: string, exprCode: string, propName?: string, propNameCode?: string): string {
 		let result = `u.err(${valueCode}, ${JSON.stringify(exprCode)}`
 		if(propName !== undefined){
 			result += `, ${JSON.stringify(propName)}`
+		} else if(propNameCode !== undefined){
+			result += ", " + propNameCode
 		}
 		result += ")"
 		return result
@@ -143,7 +156,7 @@ export class ValidatorBuilder {
 		if(validator.isExpression){
 			return validator.expression(valueCode)
 		} else {
-			return validator.declarationName + "(" + valueCode + ", typeof(intersectionData) !== \"undefined\" && intersectionData)"
+			return validator.declarationName + "(" + valueCode + ", fieldSet)"
 		}
 	}
 
@@ -244,21 +257,8 @@ export class ValidatorBuilder {
 				let constrVal = this.makeParam("allowed_values", set)
 				return this.conditionToExpression(valueCode => `!${constrVal.name}.has(${valueCode})`)
 			}
-			case "intersection": return this.buildIntersectionCheckingCode(type)
-			case "union":{
-				const fixedType = makeUnion(type.types, true) // to simplify and drop constants
-				if(fixedType.type !== "union"){
-					return this.buildCodePart(fixedType)
-				}
-				// it's important to build code of subtypes before expression is invoked
-				// because outside we rely on fact that after the outermost buildCode() call exist,
-				// no more buildCode() calls will occur when we will try to make code out of expressions
-				// that's vital for putting functions in function map at buildCode() time
-				let typeCode = fixedType.types.map(type => this.buildCodePart(type))
-				return this.conditionToExpression(valueCode => "("
-					+ typeCode.map(type => this.validatorToConditionCode(type, valueCode)).join(" && ")
-					+ ")")
-			}
+			case "intersection": return this.buildCompositeTypeCode(type, " || ", "intersection")
+			case "union": return this.buildCompositeTypeCode(type, " && ", "union")
 
 
 			case "array": return this.buildArrayCheckingCode(type)
@@ -268,78 +268,62 @@ export class ValidatorBuilder {
 		}
 	}
 
-	private buildIntersectionCheckingCode(type: Runtyper.IntersectionType<Runtyper.SimpleType>): ValidatorCodePart {
-		let canBeObject = false
-		for(let subtype of type.types){
-			if(subtype.type === "object"){
-				canBeObject = true
-			} else if(subtype.type === "union"){
-				forEachTerminalTypeInUnion(subtype, subsubtype => {
-					if(subsubtype.type === "object"){
-						canBeObject = true
-					}
-				})
+	private buildCompositeTypeCode(type: Runtyper.IntersectionType<Runtyper.SimpleType> | Runtyper.UnionType<Runtyper.SimpleType>, logicOperator: string, defaultFnName: string): ValidatorCodePart {
+		let subtypesCheckingParts = type.types.map(type => this.buildCodePart(type))
+
+		let objectTypes = [] as Runtyper.SimpleObjectType<Runtyper.SimpleType>[]
+		forEachTerminalTypeInUnionIntersection(type, type => {
+			if(type.type === "object"){
+				objectTypes.push(type)
 			}
-			if(canBeObject){
-				break
-			}
+		})
+
+		if(objectTypes.length === 0){
+			return this.conditionToExpression(valueCode => "("
+			+ subtypesCheckingParts.map(part => this.validatorToConditionCode(part, valueCode)).join(logicOperator)
+			+ ")")
 		}
 
-		if(!canBeObject){
-			return this.buildIntersectionCheckingExpressionCode(type)
-		} else {
-			return this.buildIntersectionCheckingFunctionCode(type)
+		if(objectTypes.find(x => !!x.index)){
+			throw new Error("Cannot build validator for union/intersection that has object with index property: " + simpleTypeToString(type))
 		}
+
+		let roughName = this.makeRoughTypeName(type, defaultFnName)
+		return this.buildOrGetCachedCode(type, roughName, fnDecl => {
+			let paramName = "value"
+
+			let subtypesCheckingCode = subtypesCheckingParts
+				.map(part => this.validatorToExpressionCode(part, paramName))
+				.join(logicOperator)
+
+			fnDecl.declaration = this.buildCompositeTypeObjectCode(type, fnDecl, paramName, subtypesCheckingCode)
+		})
 	}
 
-	private buildIntersectionCheckingFunctionCode(type: Runtyper.IntersectionType<Runtyper.SimpleType>): ValidatorCodePart {
-		return this.buildIntersectionCheckingExpressionCode(type)
-		// 		let roughName = this.makeRoughTypeName(type, "intersection")
-		// 		return this.buildOrGetCachedCode(type, roughName, fnDecl => {
-		// 			let paramName = "value"
+	private buildCompositeTypeObjectCode(type: Runtyper.SimpleType, fnDecl: FunctionValidatorCodePart, paramName: string, subtypesCheckingCode: string): string {
+		let unlistedCheckCode = this.buildCompositeTypeObjectPropertiesCheckingCode(paramName)
 
-		// 			let simpleTypeCheckingPart = this.buildIntersectionCheckingExpressionCode(type)
-		// 			let simpleTypeCheckingCode = this.validatorToExpressionCode(simpleTypeCheckingPart, paramName)
+		let comment = this.makeValidatorFnComment(type)
+		return `${comment}function ${fnDecl.declarationName}(${paramName}, parentFieldSet){
+	var fieldSet = parentFieldSet || new Set()
+	var checkResult = ${subtypesCheckingCode}
+	if(checkResult){
+		return checkResult
+	}
+	${unlistedCheckCode}
 
-		// 			let subtypes = type.types.filter(x => x.type === "union" || x.type === "intersection" || x.type === "object")
-		// 			let subtypesCode = subtypes.map(type => {
-		// 				let part = this.buildCodePart(type)
-		// 				return this.validatorToExpressionCode(part, paramName)
-		// 			})
-
-		// 			let comment = this.makeValidatorFnComment(type)
-		// 			fnDecl.declaration = `${comment}function ${fnDecl.declarationName}(${paramName}){
-		// 	if(typeof(${paramName}) !== "object" || ${paramName} === null || Array.isArray(${paramName})){
-		// 		return ${simpleTypeCheckingCode}
-		// 	}
-
-		// 	var intersectionData = {fields:[], hasStringIndex: false}
-		// 	var checkResult = ${subtypesCode.join(" || ")}
-		// 	if(checkResult){
-		// 		return checkResult
-		// 	}
-		// 	var fieldSet = new Set(intersectionData.fields)
-
-		// 	return false
-		// }`
-
-		// 			// TODO: props checking code here
-		// 		})
+	return false
+}`
 	}
 
-	private buildIntersectionCheckingExpressionCode(type: Runtyper.IntersectionType<Runtyper.SimpleType>): ValidatorCodePart {
-		let typeCode = type.types
-			.filter(type => type.type !== "object")
-			.map(type => this.buildCodePart(type))
-		return {
-			isExpression: true,
-			condition: valueCode => "("
-				+ typeCode.map(type => this.validatorToConditionCode(type, valueCode)).join(" || ")
-				+ ")",
-			expression: valueCode => "("
-				+ typeCode.map(type => this.validatorToExpressionCode(type, valueCode)).join(" || ")
-				+ ")"
+	private buildCompositeTypeObjectPropertiesCheckingCode(paramName: string): string {
+		return `if(parentFieldSet === undefined && typeof(${paramName}) === "object" && ${paramName} !== null && !Array.isArray(${paramName})){
+		for(var propName in ${paramName}){
+			if(!fieldSet.has(propName)){
+				return ${this.makeDescribeErrorCall(paramName + "[propName]", "<unknown field found>", undefined, "propName")}
+			}
 		}
+	}`
 	}
 
 	private buildArrayCheckingCode(type: Runtyper.ArrayType<Runtyper.SimpleType>): ValidatorCodePart {
@@ -512,11 +496,11 @@ export class ValidatorBuilder {
 				setOfFieldNames = this.makeParam(this.makeIdentifierCodeSafe("known_fields_of_" + roughName), new Set(fixedKeys))
 			}
 
-			let unlistedPropsCheckingCode = this.buildObjectUnlistedPropertiesCheckingCode(setOfFieldNames?.name, !hasStringIndex ? null : type.index?.valueType, paramName)
+			let unlistedPropsCheckingCode = this.buildObjectUnlistedPropertiesCheckingCode(setOfFieldNames?.name, !hasStringIndex ? null : type.index?.valueType, paramName, "parentFieldSet")
 
 			let initialCheck = `${paramName} === null || typeof(${paramName}) !== "object" || Array.isArray(${paramName})`
 			let comment = this.makeValidatorFnComment(type)
-			fnDecl.declaration = `${comment}function ${fnDecl.declarationName}(${paramName}){
+			fnDecl.declaration = `${comment}function ${fnDecl.declarationName}(${paramName}, parentFieldSet){
 	if(${initialCheck}){
 		return ${this.makeDescribeErrorCall(paramName, initialCheck)}
 	}
@@ -531,7 +515,7 @@ export class ValidatorBuilder {
 		})
 	}
 
-	private buildObjectUnlistedPropertiesCheckingCode(fieldSetName: string | null | undefined, stringIndexType: Runtyper.SimpleType | null | undefined, paramName: string): string {
+	private buildObjectUnlistedPropertiesCheckingCode(fieldSetName: string | null | undefined, stringIndexType: Runtyper.SimpleType | null | undefined, paramName: string, parentFieldSetName: string | null): string {
 		let skipKnownPropCode = ""
 		if(fieldSetName){
 			skipKnownPropCode = `
@@ -540,30 +524,43 @@ export class ValidatorBuilder {
 		}`
 		}
 
+		let wrapInCycle = (code: string): string => {
+			return `for(var propName in ${paramName}){${code}\n\t}`
+		}
+
 		let unlistedPropsCheckingCode: string
 		if(this.opts.onUnknownFieldInObject === "allow_anything"){
 			unlistedPropsCheckingCode = ""
+		} else if(!stringIndexType){
+			unlistedPropsCheckingCode = `${skipKnownPropCode}
+		return ${this.makeDescribeErrorCall(paramName + "[propName]", "<unknown field found>", undefined, "propName")}`
+			unlistedPropsCheckingCode = wrapInCycle(unlistedPropsCheckingCode)
+			if(fieldSetName && parentFieldSetName){
+				unlistedPropsCheckingCode = addIdentation(unlistedPropsCheckingCode)
+				unlistedPropsCheckingCode = `
+	if(${parentFieldSetName}){
+		for(var i of ${fieldSetName}){
+			${parentFieldSetName}.add(i)
+		}
+	} else {
+		${unlistedPropsCheckingCode}
+	}
+			`
+			}
 		} else {
-			if(!stringIndexType){
-				unlistedPropsCheckingCode = `${skipKnownPropCode}
-		checkResult = ${this.makeDescribeErrorCall(paramName + "[propName]", "<unknown field found>")}
-		checkResult.path.push(propName)
-		return checkResult`
-			} else {
-				let propCond = this.buildCodePart(makeUnion([
-					stringIndexType,
-					{type: "constant", value: undefined}
-				]))
-				let indexTypeChecker = this.validatorToExpressionCode(propCond, paramName + "[propName]")
-				unlistedPropsCheckingCode = `${skipKnownPropCode}
+			let propCond = this.buildCodePart(makeUnion([
+				stringIndexType,
+				{type: "constant", value: undefined}
+			]))
+			let indexTypeChecker = this.validatorToExpressionCode(propCond, paramName + "[propName]")
+			unlistedPropsCheckingCode = `${skipKnownPropCode}
 		checkResult = ${indexTypeChecker}
 		if(checkResult){
 			checkResult.path.push(propName)
 			return checkResult
 		}
 		`
-			}
-			unlistedPropsCheckingCode = `for(var propName in ${paramName}){${unlistedPropsCheckingCode}\n\t}`
+			unlistedPropsCheckingCode = wrapInCycle(unlistedPropsCheckingCode)
 		}
 		return unlistedPropsCheckingCode
 	}
@@ -574,7 +571,7 @@ export class ValidatorBuilder {
 			return {name, value} as Runtyper.ValidatorOuterValue
 		})
 
-		let code = ""
+		let code = codePreamble
 
 		let sortedDecls = [...this.functionDeclarations]
 			.sort(([a], [b]) => a > b ? 1 : -1)
