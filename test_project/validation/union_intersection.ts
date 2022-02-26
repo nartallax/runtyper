@@ -301,6 +301,9 @@ validationTests.push([
 	null
 ])
 
+// let x: ({a: {b: number}} | {a: {c: number}}) & ({a: {d: number}} | {a: {e: number}}) = null as any
+// let xx: ({a: {b: number}, b: {b: string}} | {a: {c: number}, b: {c: string}}) & ({a: {d: number}, b: {d: string}} | {a: {e: number}, b: {e: string}}) = null as any
+
 // TODO: test this:
 // export type IntersectionOfUnions = ({a: number} | {b: number}) & ({c: number} | {d: number})
 // TODO: stack more of this nested shit
