@@ -1,4 +1,4 @@
-import {ErrorValidationResult} from "runtime/validator_builder"
+import {ErrorValidationResult} from "codegen/validator_builder"
 
 export namespace ValidatorUtils {
 

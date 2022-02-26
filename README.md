@@ -30,3 +30,4 @@ validator builder flag tests
 discriminated union optimization (through switch) and tests (don't forget two-field keys)
 simplify trivial cases of intersections, as well as unions, in simplifier output
 rewrite validator builder: reuse functions between validators
+test: recursive types with two cycles instead of just one

@@ -5,7 +5,7 @@ import * as Tsc from "typescript"
 import {RuntyperTricks} from "transformer/tricks"
 import {Transformer, TransParams} from "transformer/transformer"
 import {TypeSimplifier} from "runtime/type_simplifier"
-import {ValidatorBuilder} from "runtime/validator_builder"
+import {ValidatorBuilderImpl} from "codegen/validator_builder"
 
 export namespace Runtyper {
 
@@ -27,21 +27,15 @@ export namespace Runtyper {
 		// referenciallyReferencablePackages: string[]
 	}
 
+	export interface ValidatorBuilder {
+		build<T = unknown>(type: Runtyper.SimpleType): (value: unknown) => value is T
+	}
+
 	export interface ValidatorBuilderOptions {
 		readonly onUnknown: "throw_on_build" | "allow_anything"
 		readonly onAny: "throw_on_build" | "allow_anything"
 		readonly onUnknownFieldInObject: "validation_error" | "allow_anything"
 		readonly onNaNWhenExpectedNumber: "validation_error" | "allow"
-	}
-
-	export interface ValidatorCode {
-		readonly code: string
-		readonly values: readonly ValidatorOuterValue[]
-	}
-
-	export interface ValidatorOuterValue {
-		readonly name: string
-		readonly value: unknown
 	}
 
 
@@ -124,7 +118,7 @@ export namespace Runtyper {
 			.map(key => fullOpts[key as keyof ValidatorBuilderOptions])
 			.join("|")
 
-		return builders[key] ||= new ValidatorBuilder(fullOpts)
+		return builders[key] ||= new ValidatorBuilderImpl(fullOpts)
 	}
 
 	export class ValidationError extends Error {
