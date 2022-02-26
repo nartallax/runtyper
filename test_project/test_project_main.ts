@@ -97,9 +97,10 @@ function runCodeGenerationTests(): number {
 function runValidationTests(): number {
 	let failCount = 0
 	for(let [type, value, expectedResult, mbOptions] of validationTests){
+		let validator: ((value: unknown) => unknown) | null = null
 		try {
 			let builder = Runtyper.getValidatorBuilder(mbOptions)
-			let validator = builder.build(Runtyper.getSimplifier().simplify(type))
+			validator = builder.build(Runtyper.getSimplifier().simplify(type))
 			validator(value)
 			if(expectedResult !== null){
 				console.error("\nValidation test failed:")
@@ -107,7 +108,6 @@ function runValidationTests(): number {
 				console.error("value: " + JSON.stringify(value))
 				console.error("expected error: " + expectedResult)
 				console.error("got no error")
-				console.log(validator + "")
 				failCount++
 			}
 		} catch(e){

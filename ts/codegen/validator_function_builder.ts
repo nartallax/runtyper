@@ -6,15 +6,14 @@ import {canBeUndefined, forEachTerminalTypeInUnion, forEachTerminalTypeInUnionIn
 import {isValidIdentifier, simpleTypeToString} from "runtime/type_stringifier"
 import {CodeBuilder} from "codegen/code_builder"
 
-const reservedNames: ReadonlySet<string> = new Set(["checkResult", "i", "propName", "obj", "tuple", "arr", "value", "fieldSet", "parentFieldSet"])
+const reservedNames: ReadonlySet<string> = new Set(["checkResult", "i", "propName", "obj", "tuple", "arr", "value", "intCont", "parentIntCont"])
 
 // sometimes `context` is not defined inside of functions
 // but I want to pass it to function invocations even if it's not present in the enclosing function
 // so here I declare "default" value of context
 // and now I can instead of `typeof(context) === "undefined"? undefined: context`
 // just write `context`, because it will be undefined by default and won't generate error
-const codePreamble = `var context = undefined;
-var fieldSet = undefined`
+const codePreamble = "var intCont = undefined"
 
 export class ValidatorFunctionBuilder extends FunctionBuilder {
 
@@ -33,7 +32,7 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 		if(validator.isExpression){
 			return validator.expression(valueCode)
 		} else {
-			return validator.declarationName + "(" + valueCode + ", fieldSet)"
+			return validator.declarationName + "(" + valueCode + ", intCont)"
 		}
 	}
 
@@ -202,8 +201,6 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 			case "intersection": return this.buildCompositeTypeCode(type, " || ", "intersection")
 			// TODO: rewrite into separate functions
 			case "union": return this.buildCompositeTypeCode(type, " && ", "union")
-
-
 			case "array": return this.buildArrayCheckingCode(type)
 			case "object": return this.buildObjectCheckingCode(type)
 			case "tuple": return this.buildTupleCheckingCode(type)
@@ -243,33 +240,23 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 	}
 
 	private buildCompositeTypeObjectCode(builder: CodeBuilder, paramName: string, subtypesCheckingCode: string): void {
-		let unlistedCheckCode = this.buildCompositeTypeObjectPropertiesCheckingCode(paramName)
-		builder.append(`(${paramName}, parentFieldSet){
-			var fieldSet = new Set()
+		builder.append(`(${paramName}, parentIntCont){
+			var intCont = u.makeIntCont()
 			var checkResult = ${subtypesCheckingCode}
 			if(checkResult){
 				return checkResult
 			}
-			${unlistedCheckCode}
+			if(parentIntCont === undefined){
+				checkResult = intCont.check()
+				if(checkResult){
+					return checkResult
+				}
+			} else {
+				parentIntCont.merge(intCont)
+			}
 
 			return false
 		}`)
-	}
-
-	private buildCompositeTypeObjectPropertiesCheckingCode(paramName: string): string {
-		return `if(parentFieldSet === undefined){
-			if(typeof(${paramName}) === "object" && ${paramName} !== null && !Array.isArray(${paramName})){
-				for(var propName in ${paramName}){
-					if(!fieldSet.has(propName)){
-						return ${this.makeDescribeErrorCall(paramName + "[propName]", "<unknown field found>", undefined, "propName")}
-					}
-				}
-			}
-		} else {
-			for(var i of fieldSet){
-				parentFieldSet.add(i)
-			}
-		}`
 	}
 
 	private buildArrayCheckingCode(type: Runtyper.ArrayType<Runtyper.SimpleType>): CodePart {
@@ -314,11 +301,11 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 				propConds.push(propCond)
 				let indexCode = fromTail ? paramName + ".length - " + index : (index + "")
 				let code = `
-	checkResult = ${this.partToCode(propCond, paramName + "[" + indexCode + "]")}
-	if(checkResult){
-		checkResult.path.push(${indexCode})
-		return checkResult
-	}`
+					checkResult = ${this.partToCode(propCond, paramName + "[" + indexCode + "]")}
+					if(checkResult){
+						checkResult.path.push(${indexCode})
+						return checkResult
+					}`
 				fixedCheckersCode.push(code)
 			}
 
@@ -438,10 +425,10 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 				setOfFieldNames = this.addParameter("known_fields", new Set(fixedKeys))
 			}
 
-			let unlistedPropsCheckingCode = this.buildObjectUnlistedPropertiesCheckingCode(setOfFieldNames?.name, !hasStringIndex ? null : type.index?.valueType, paramName, "parentFieldSet")
+			let unlistedPropsCheckingCode = this.buildObjectUnlistedPropertiesCheckingCode(setOfFieldNames?.name, !hasStringIndex ? null : type.index?.valueType, paramName, "intCont")
 
 			let initialCheck = `${paramName} === null || typeof(${paramName}) !== "object" || Array.isArray(${paramName})`
-			builder.append(`(${paramName}, parentFieldSet){
+			builder.append(`(${paramName}, intCont){
 				if(${initialCheck}){
 					return ${this.makeDescribeErrorCall(paramName, initialCheck)}
 				}
@@ -456,7 +443,7 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 		})
 	}
 
-	private buildObjectUnlistedPropertiesCheckingCode(fieldSetName: string | null | undefined, stringIndexType: Runtyper.SimpleType | null | undefined, paramName: string, parentFieldSetName: string | null): string {
+	private buildObjectUnlistedPropertiesCheckingCode(fieldSetName: string | null | undefined, stringIndexType: Runtyper.SimpleType | null | undefined, paramName: string, parentIntContName: string | null): string {
 		let skipKnownPropCode = ""
 		if(fieldSetName){
 			skipKnownPropCode = `
@@ -476,11 +463,11 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 			unlistedPropsCheckingCode = `${skipKnownPropCode}
 				return ${this.makeDescribeErrorCall(paramName + "[propName]", "<unknown field found>", undefined, "propName")}`
 			unlistedPropsCheckingCode = wrapInCycle(unlistedPropsCheckingCode)
-			if(fieldSetName && parentFieldSetName){
+			if(fieldSetName && parentIntContName){
 				unlistedPropsCheckingCode = `
-					if(${parentFieldSetName}){
+					if(${parentIntContName}){
 						for(var i of ${fieldSetName}){
-							${parentFieldSetName}.add(i)
+							${parentIntContName}.add(${paramName}, i)
 						}
 					} else {
 						${unlistedPropsCheckingCode}

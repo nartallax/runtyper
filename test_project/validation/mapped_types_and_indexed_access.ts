@@ -107,7 +107,7 @@ validationTests.push([
 validationTests.push([
 	Runtyper.getType<C>(),
 	{a: 5, b: "uwu"},
-	"bad value at path value.b (of type string): failed at expression <unknown field found>"
+	"<unknown field found>"
 ])
 
 validationTests.push([
