@@ -120,7 +120,7 @@ function runValidationTests(): number {
 				console.error("value: " + JSON.stringify(value))
 				console.error("expected no error")
 				console.error("got error text: " + e.message)
-				console.error("stack: " + e.stack)
+				// console.error("stack: " + e.stack)
 				failCount++
 			} else if(e.message.indexOf(expectedResult) < 0){
 				console.error("\nValidation test failed:")
@@ -128,7 +128,7 @@ function runValidationTests(): number {
 				console.error("value: " + JSON.stringify(value))
 				console.error("expected error: " + expectedResult)
 				console.error("got error text: " + e.message)
-				console.error("stack: " + e.stack)
+				// console.error("stack: " + e.stack)
 				failCount++
 			}
 		}

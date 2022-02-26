@@ -4,6 +4,7 @@ import {ErrorValidationResult, ValidatorBuilderImpl} from "codegen/validator_bui
 import {ValidatorUtils} from "runtime/validator_utils"
 import {canBeUndefined, forEachTerminalTypeInUnion, forEachTerminalTypeInUnionIntersection, makeUnion} from "utils/simple_type_utils"
 import {isValidIdentifier, simpleTypeToString} from "runtime/type_stringifier"
+import {CodeBuilder} from "codegen/code_builder"
 
 const reservedNames: ReadonlySet<string> = new Set(["checkResult", "i", "propName", "obj", "tuple", "arr", "value", "fieldSet", "parentFieldSet"])
 
@@ -124,7 +125,7 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 		return type.refName ? this.makeComment("for " + type.refName) + "\n" : ""
 	}
 
-	private makeOrTakeFunction(type: Runtyper.SimpleType, dfltFunctionName: string, maker: (fnDecl: FunctionCodePart) => void): CodePart {
+	private makeOrTakeFunction(type: Runtyper.SimpleType, dfltFunctionName: string, maker: (builder: CodeBuilder) => void): CodePart {
 		if(type.fullRefName){
 			let alreadyDefinedFunction = this.definedFunctionsOfTypes.get(type.fullRefName)
 			if(alreadyDefinedFunction){
@@ -136,7 +137,11 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 		if(type.fullRefName){
 			this.definedFunctionsOfTypes.set(type.fullRefName, fnDecl)
 		}
-		maker(fnDecl)
+		let builder = new CodeBuilder()
+		builder.append(this.makeValidatorFnComment(type))
+		builder.append(`function ${fnDecl.declarationName}`)
+		maker(builder)
+		fnDecl.declaration = builder.getResult()
 		return fnDecl
 	}
 
@@ -226,79 +231,76 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 			throw new Error("Cannot build validator for union/intersection that has object with index property: " + simpleTypeToString(type))
 		}
 
-		return this.makeOrTakeFunction(type, defaultFnName, fnDecl => {
+		return this.makeOrTakeFunction(type, defaultFnName, builder => {
 			let paramName = "value"
 
 			let subtypesCheckingCode = subtypesCheckingParts
 				.map(part => this.partToCode(part, paramName))
 				.join(logicOperator)
 
-			fnDecl.declaration = this.buildCompositeTypeObjectCode(type, fnDecl, paramName, subtypesCheckingCode)
+			this.buildCompositeTypeObjectCode(builder, paramName, subtypesCheckingCode)
 		})
 	}
 
-	private buildCompositeTypeObjectCode(type: Runtyper.SimpleType, fnDecl: FunctionCodePart, paramName: string, subtypesCheckingCode: string): string {
+	private buildCompositeTypeObjectCode(builder: CodeBuilder, paramName: string, subtypesCheckingCode: string): void {
 		let unlistedCheckCode = this.buildCompositeTypeObjectPropertiesCheckingCode(paramName)
+		builder.append(`(${paramName}, parentFieldSet){
+			var fieldSet = new Set()
+			var checkResult = ${subtypesCheckingCode}
+			if(checkResult){
+				return checkResult
+			}
+			${unlistedCheckCode}
 
-		let comment = this.makeValidatorFnComment(type)
-		return `${comment}function ${fnDecl.declarationName}(${paramName}, parentFieldSet){
-	var fieldSet = new Set()
-	var checkResult = ${subtypesCheckingCode}
-	if(checkResult){
-		return checkResult
-	}
-	${unlistedCheckCode}
-
-	return false
-}`
+			return false
+		}`)
 	}
 
 	private buildCompositeTypeObjectPropertiesCheckingCode(paramName: string): string {
 		return `if(parentFieldSet === undefined){
-		if(typeof(${paramName}) === "object" && ${paramName} !== null && !Array.isArray(${paramName})){
-			for(var propName in ${paramName}){
-				if(!fieldSet.has(propName)){
-					return ${this.makeDescribeErrorCall(paramName + "[propName]", "<unknown field found>", undefined, "propName")}
+			if(typeof(${paramName}) === "object" && ${paramName} !== null && !Array.isArray(${paramName})){
+				for(var propName in ${paramName}){
+					if(!fieldSet.has(propName)){
+						return ${this.makeDescribeErrorCall(paramName + "[propName]", "<unknown field found>", undefined, "propName")}
+					}
 				}
 			}
-		}
-	} else {
-		for(var i of fieldSet){
-			parentFieldSet.add(i)
-		}
-	}`
+		} else {
+			for(var i of fieldSet){
+				parentFieldSet.add(i)
+			}
+		}`
 	}
 
 	private buildArrayCheckingCode(type: Runtyper.ArrayType<Runtyper.SimpleType>): CodePart {
-		return this.makeOrTakeFunction(type, "array", fnDecl => {
+		return this.makeOrTakeFunction(type, "array", builder => {
 			let paramName = "arr"
 			let indexedParamName = paramName + "[i]"
 			let valueCond = this.buildPart(type.valueType)
 			let valueExpr = this.partToCode(valueCond, indexedParamName)
 			let initialCheck = `!Array.isArray(${paramName})`
 
-			let comment = this.makeValidatorFnComment(type)
-			fnDecl.declaration = `${comment}function ${fnDecl.declarationName}(${paramName}){
-	if(${initialCheck}){
-		return ${this.makeDescribeErrorCall(paramName, initialCheck)}
-	}
+			builder.append(`(${paramName}){
+				if(${initialCheck}){
+					return ${this.makeDescribeErrorCall(paramName, initialCheck)}
+				}
 
-	var len = ${paramName}.length
-	var checkResult
-	for(var i = 0; i < len; i++){
-		checkResult = ${valueExpr}
-		if(checkResult){
-			checkResult.path.push(i)
-			return checkResult
-		}
-	}
-	return false
-}`
+				var len = ${paramName}.length
+				var checkResult
+				for(var i = 0; i < len; i++){
+					checkResult = ${valueExpr}
+					if(checkResult){
+						checkResult.path.push(i)
+						return checkResult
+					}
+				}
+				return false
+			}`)
 		})
 	}
 
 	private buildTupleCheckingCode(type: Runtyper.SimpleTupleType<Runtyper.SimpleType>): CodePart {
-		return this.makeOrTakeFunction(type, "tuple", fnDecl => {
+		return this.makeOrTakeFunction(type, "tuple", builder => {
 			let paramName = "tuple"
 			let minLength = 0
 			let maxLength = 0
@@ -352,13 +354,13 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 				let restCond = this.buildPart(rest.valueType)
 				propConds.push(restCond)
 				restCheckerCode = `
-	for(var i = ${restStartsAt}; i < tuple.length${tailOffset === 0 ? "" : " - " + tailOffset}; i++){
-		checkResult = ${this.partToCode(restCond, paramName + "[i]")}
-		if(checkResult){
-			checkResult.path.push(i)
-			return checkResult
-		}
-	}`
+					for(var i = ${restStartsAt}; i < tuple.length${tailOffset === 0 ? "" : " - " + tailOffset}; i++){
+						checkResult = ${this.partToCode(restCond, paramName + "[i]")}
+						if(checkResult){
+							checkResult.path.push(i)
+							return checkResult
+						}
+					}`
 			}
 
 			let initialCheck = `!Array.isArray(${paramName})`
@@ -368,29 +370,27 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 					? `${paramName}.length < ${minLength}`
 					: `${paramName}.length < ${minLength} || ${paramName}.length > ${maxLength}`
 
-			let comment = this.makeValidatorFnComment(type)
-			fnDecl.declaration = `${comment}function ${fnDecl.declarationName}(${paramName}){
-	if(${initialCheck}){
-		return ${this.makeDescribeErrorCall(paramName, initialCheck)}
-	}
+			builder.append(`(${paramName}){
+				if(${initialCheck}){
+					return ${this.makeDescribeErrorCall(paramName, initialCheck)}
+				}
 
-	if(${lenCheck}){
-		return ${this.makeDescribeErrorCall(paramName, lenCheck)}
-	}
+				if(${lenCheck}){
+					return ${this.makeDescribeErrorCall(paramName, lenCheck)}
+				}
 
-	var checkResult
-	${fixedCheckersCode.join("\n")}
+				var checkResult
+				${fixedCheckersCode.join("\n")}
 
-	${restCheckerCode}
+				${restCheckerCode}
 
-	return false
-}`
-			return fnDecl
+				return false
+			}`)
 		})
 	}
 
 	private buildObjectCheckingCode(type: Runtyper.SimpleObjectType<Runtyper.SimpleType>): CodePart {
-		return this.makeOrTakeFunction(type, "object", fnDecl => {
+		return this.makeOrTakeFunction(type, "object", builder => {
 			let paramName = "obj"
 			let fixedKeys = Object.keys(type.properties)
 
@@ -399,11 +399,12 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 				let propCond = this.buildPart(propType)
 				let propExprCode = this.makeLiteralPropertyAccessExpression(paramName, propName)
 				return `
-	checkResult = ${this.partToCode(propCond, propExprCode)}
-	if(checkResult){
-		checkResult.path.push(${JSON.stringify(propName)})
-		return checkResult
-	}`
+					checkResult = ${this.partToCode(propCond, propExprCode)}
+					if(checkResult){
+						checkResult.path.push(${JSON.stringify(propName)})
+						return checkResult
+					}
+				`
 			}
 
 			let fixedKeysCheckingParts = fixedKeys.map(propName => {
@@ -440,19 +441,18 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 			let unlistedPropsCheckingCode = this.buildObjectUnlistedPropertiesCheckingCode(setOfFieldNames?.name, !hasStringIndex ? null : type.index?.valueType, paramName, "parentFieldSet")
 
 			let initialCheck = `${paramName} === null || typeof(${paramName}) !== "object" || Array.isArray(${paramName})`
-			let comment = this.makeValidatorFnComment(type)
-			fnDecl.declaration = `${comment}function ${fnDecl.declarationName}(${paramName}, parentFieldSet){
-	if(${initialCheck}){
-		return ${this.makeDescribeErrorCall(paramName, initialCheck)}
-	}
+			builder.append(`(${paramName}, parentFieldSet){
+				if(${initialCheck}){
+					return ${this.makeDescribeErrorCall(paramName, initialCheck)}
+				}
 
-	var checkResult
-	${fixedKeysCheckingParts.join("\n")}
+				var checkResult
+				${fixedKeysCheckingParts.join("\n")}
 
-	${unlistedPropsCheckingCode}
+				${unlistedPropsCheckingCode}
 
-	return false
-}`
+				return false
+			}`)
 		})
 	}
 
@@ -460,9 +460,9 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 		let skipKnownPropCode = ""
 		if(fieldSetName){
 			skipKnownPropCode = `
-		if(${fieldSetName}.has(propName)){
-			continue
-		}`
+				if(${fieldSetName}.has(propName)){
+					continue
+				}`
 		}
 
 		let wrapInCycle = (code: string): string => {
@@ -474,18 +474,17 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 			unlistedPropsCheckingCode = ""
 		} else if(!stringIndexType){
 			unlistedPropsCheckingCode = `${skipKnownPropCode}
-		return ${this.makeDescribeErrorCall(paramName + "[propName]", "<unknown field found>", undefined, "propName")}`
+				return ${this.makeDescribeErrorCall(paramName + "[propName]", "<unknown field found>", undefined, "propName")}`
 			unlistedPropsCheckingCode = wrapInCycle(unlistedPropsCheckingCode)
 			if(fieldSetName && parentFieldSetName){
 				unlistedPropsCheckingCode = `
-	if(${parentFieldSetName}){
-		for(var i of ${fieldSetName}){
-			${parentFieldSetName}.add(i)
-		}
-	} else {
-		${unlistedPropsCheckingCode}
-	}
-			`
+					if(${parentFieldSetName}){
+						for(var i of ${fieldSetName}){
+							${parentFieldSetName}.add(i)
+						}
+					} else {
+						${unlistedPropsCheckingCode}
+					}`
 			}
 		} else {
 			let propCond = this.buildPart(makeUnion([
@@ -494,12 +493,11 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 			]))
 			let indexTypeChecker = this.partToCode(propCond, paramName + "[propName]")
 			unlistedPropsCheckingCode = `${skipKnownPropCode}
-		checkResult = ${indexTypeChecker}
-		if(checkResult){
-			checkResult.path.push(propName)
-			return checkResult
-		}
-		`
+				checkResult = ${indexTypeChecker}
+				if(checkResult){
+					checkResult.path.push(propName)
+					return checkResult
+				}`
 			unlistedPropsCheckingCode = wrapInCycle(unlistedPropsCheckingCode)
 		}
 		return unlistedPropsCheckingCode
