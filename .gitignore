@@ -3,3 +3,4 @@ target
 node_modules
 test_project/js
 test_project/node_modules
+ts/generated
