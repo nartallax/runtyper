@@ -37,7 +37,7 @@ const reservedNames: ReadonlySet<string> = new Set(["checkResult", "i", "propNam
 // so here I declare "default" value of fieldSet
 // and now I can instead of `typeof(fieldSet) === "undefined"? undefined: fieldSet`
 // just write `fieldSet`, because it will be undefined by default and won't generate error
-const codePreamble = `
+const codePreamble = `"use strict";
 var fieldSet = undefined
 `
 
@@ -258,6 +258,7 @@ export class ValidatorBuilder {
 				return this.conditionToExpression(valueCode => `!${constrVal.name}.has(${valueCode})`)
 			}
 			case "intersection": return this.buildCompositeTypeCode(type, " || ", "intersection")
+			// TODO: rewrite into separate functions
 			case "union": return this.buildCompositeTypeCode(type, " && ", "union")
 
 
@@ -305,7 +306,7 @@ export class ValidatorBuilder {
 
 		let comment = this.makeValidatorFnComment(type)
 		return `${comment}function ${fnDecl.declarationName}(${paramName}, parentFieldSet){
-	var fieldSet = parentFieldSet || new Set()
+	var fieldSet = new Set()
 	var checkResult = ${subtypesCheckingCode}
 	if(checkResult){
 		return checkResult
@@ -317,11 +318,17 @@ export class ValidatorBuilder {
 	}
 
 	private buildCompositeTypeObjectPropertiesCheckingCode(paramName: string): string {
-		return `if(parentFieldSet === undefined && typeof(${paramName}) === "object" && ${paramName} !== null && !Array.isArray(${paramName})){
-		for(var propName in ${paramName}){
-			if(!fieldSet.has(propName)){
-				return ${this.makeDescribeErrorCall(paramName + "[propName]", "<unknown field found>", undefined, "propName")}
+		return `if(parentFieldSet === undefined){
+		if(typeof(${paramName}) === "object" && ${paramName} !== null && !Array.isArray(${paramName})){
+			for(var propName in ${paramName}){
+				if(!fieldSet.has(propName)){
+					return ${this.makeDescribeErrorCall(paramName + "[propName]", "<unknown field found>", undefined, "propName")}
+				}
 			}
+		}
+	} else {
+		for(var i of fieldSet){
+			parentFieldSet.add(i)
 		}
 	}`
 	}

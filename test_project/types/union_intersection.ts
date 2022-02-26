@@ -13,6 +13,12 @@ interface MathProblem {
 	z: number
 }
 
+export type UnionOfIntersections = ({a: number} & {b: number}) | ({c: number} & {d: number})
+export type IntersectionOfUnions = ({a: number} | {b: number}) & ({c: number} | {d: number})
+
+export type IntersectionOfUnionsOfIntersections = (({a: number} & {b: number}) | ({c: number} & {d: number})) & (({e: number} & {f: number}) | ({g: number} & {h: number}))
+export type UnionOfIntersectionsOfUnions = (({a: number} | {b: number}) & ({c: number} | {d: number})) | (({e: number} | {f: number}) & ({g: number} | {h: number}))
+
 export type ManyMath = MathProblem & Point
 export type NotManyMath = MathProblem | Point
 export type MathAndName = (MathProblem | Point) & {name: string}
