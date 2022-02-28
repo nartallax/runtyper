@@ -118,8 +118,6 @@ export abstract class FunctionBuilder {
 		}
 		code += `\n//# sourceURL=runtyper_validator_generated_code_${id}`
 
-
-
 		let outerFunction = new Function(...allValues.map(x => x.name), code)
 		let execResult = outerFunction(...allValues.map(x => x.value))
 		return execResult

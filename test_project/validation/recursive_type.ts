@@ -61,3 +61,34 @@ validationTests.push([
 	{printedValue: {text: "nya", child: {src: "nya", child: {src: "nya", isTrue: true}}}},
 	"at path value.printedValue.child (of type object)"
 ])
+
+
+
+// two cycles within the recursive type
+type Content = {content?: Div10 | Img10}
+type Div10 = {body: Content}
+type Img10 = {src: Content}
+
+validationTests.push([
+	Runtyper.getType<Div10>(),
+	{body: {content: {src: {content: {src: {content: {body: {}}}}}}}},
+	null
+])
+
+validationTests.push([
+	Runtyper.getType<Div10>(),
+	{body: {content: {src: {content: {src: {content: {}}}}}}},
+	"bad value"
+])
+
+validationTests.push([
+	Runtyper.getType<Content>(),
+	{content: {src: {content: {src: {content: {}}}}}},
+	"bad value"
+])
+
+validationTests.push([
+	Runtyper.getType<Content>(),
+	{content: {src: {content: {src: {content: {body: {}}}}}}},
+	null
+])
