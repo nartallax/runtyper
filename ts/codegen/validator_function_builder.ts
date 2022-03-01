@@ -198,9 +198,13 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 				let constrVal = this.addParameter("allowed_values", set)
 				return this.conditionToExpression(valueCode => `!${constrVal.name}.has(${valueCode})`)
 			}
-			case "intersection": return this.buildCompositeTypeCode(type, " || ", "intersection")
-			// TODO: rewrite into separate functions
-			case "union": return this.buildCompositeTypeCode(type, " && ", "union")
+			case "intersection": return this.buildIntersectionCheckingCode(type)
+			case "union":{
+				let subtypesCheckingParts = type.types.map(type => this.buildPart(type))
+				return this.conditionToExpression(valueCode => "("
+					+ subtypesCheckingParts.map(part => this.partToCode(part, valueCode)).join(" && ")
+					+ ")")
+			}
 			case "array": return this.buildArrayCheckingCode(type)
 			case "object": return this.buildObjectCheckingCode(type)
 			case "tuple": return this.buildTupleCheckingCode(type)
@@ -208,7 +212,7 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 		}
 	}
 
-	private buildCompositeTypeCode(type: Runtyper.IntersectionType<Runtyper.SimpleType> | Runtyper.UnionType<Runtyper.SimpleType>, logicOperator: string, defaultFnName: string): CodePart {
+	private buildIntersectionCheckingCode(type: Runtyper.IntersectionType<Runtyper.SimpleType> | Runtyper.UnionType<Runtyper.SimpleType>): CodePart {
 		let subtypesCheckingParts = type.types.map(type => this.buildPart(type))
 
 		let objectTypes = [] as Runtyper.SimpleObjectType<Runtyper.SimpleType>[]
@@ -220,7 +224,7 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 
 		if(objectTypes.length === 0){
 			return this.conditionToExpression(valueCode => "("
-			+ subtypesCheckingParts.map(part => this.partToCode(part, valueCode)).join(logicOperator)
+			+ subtypesCheckingParts.map(part => this.partToCode(part, valueCode)).join(" || ")
 			+ ")")
 		}
 
@@ -228,35 +232,31 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 			throw new Error("Cannot build validator for union/intersection that has object with index property: " + simpleTypeToString(type))
 		}
 
-		return this.makeOrTakeFunction(type, defaultFnName, builder => {
+		return this.makeOrTakeFunction(type, "intersection", builder => {
 			let paramName = "value"
 
 			let subtypesCheckingCode = subtypesCheckingParts
 				.map(part => this.partToCode(part, paramName))
-				.join(logicOperator)
+				.join(" || ")
 
-			this.buildCompositeTypeObjectCode(builder, paramName, subtypesCheckingCode)
-		})
-	}
-
-	private buildCompositeTypeObjectCode(builder: CodeBuilder, paramName: string, subtypesCheckingCode: string): void {
-		builder.append(`(${paramName}, parentIntCont){
-			var intCont = u.makeIntCont()
-			var checkResult = ${subtypesCheckingCode}
-			if(checkResult){
-				return checkResult
-			}
-			if(parentIntCont === undefined){
-				checkResult = intCont.check()
+			builder.append(`(${paramName}, parentIntCont){
+				var intCont = u.makeIntCont()
+				var checkResult = ${subtypesCheckingCode}
 				if(checkResult){
 					return checkResult
 				}
-			} else {
-				parentIntCont.merge(intCont)
-			}
-
-			return false
-		}`)
+				if(parentIntCont === undefined){
+					checkResult = intCont.check()
+					if(checkResult){
+						return checkResult
+					}
+				} else {
+					parentIntCont.merge(intCont)
+				}
+	
+				return false
+			}`)
+		})
 	}
 
 	private buildArrayCheckingCode(type: Runtyper.ArrayType<Runtyper.SimpleType>): CodePart {

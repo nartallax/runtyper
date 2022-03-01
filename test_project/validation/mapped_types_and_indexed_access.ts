@@ -101,13 +101,13 @@ validationTests.push([
 validationTests.push([
 	Runtyper.getType<C>(),
 	{},
-	"bad value at path value.b (of type undefined): failed at expression typeof(obj.b) !== \"string\""
+	"bad value"
 ])
 
 validationTests.push([
 	Runtyper.getType<C>(),
 	{a: 5, b: "uwu"},
-	"<unknown field found>"
+	"bad value"
 ])
 
 validationTests.push([

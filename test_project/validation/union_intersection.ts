@@ -106,7 +106,7 @@ validationTests.push([
 validationTests.push([
 	Runtyper.getType<NotManyMath>(),
 	{x: 5, y: 10, z: 15},
-	"<unknown field found>"
+	"bad value"
 ])
 
 validationTests.push([
@@ -126,25 +126,25 @@ validationTests.push([
 validationTests.push([
 	Runtyper.getType<UnionOfIntersections>(),
 	{a: 5, c: 5, d: 5},
-	"<unknown field found>"
+	"bad value"
 ])
 
 validationTests.push([
 	Runtyper.getType<UnionOfIntersections>(),
 	{b: 5, c: 5, d: 5},
-	"<unknown field found>"
+	"bad value"
 ])
 
 validationTests.push([
 	Runtyper.getType<UnionOfIntersections>(),
 	{a: 5, b: 5, c: 5},
-	"<unknown field found>"
+	"bad value"
 ])
 
 validationTests.push([
 	Runtyper.getType<UnionOfIntersections>(),
 	{a: 5, b: 5, d: 5},
-	"<unknown field found>"
+	"bad value"
 ])
 
 validationTests.push([
@@ -230,19 +230,19 @@ validationTests.push([
 validationTests.push([
 	Runtyper.getType<UnionOfIntersectionsOfUnions>(),
 	{a: 5, b: 5, c: 5},
-	"<unknown field found>"
+	"bad value"
 ])
 
 validationTests.push([
 	Runtyper.getType<UnionOfIntersectionsOfUnions>(),
 	{a: 5, d: 5, c: 5},
-	"<unknown field found>"
+	"bad value"
 ])
 
 validationTests.push([
 	Runtyper.getType<UnionOfIntersectionsOfUnions>(),
 	{e: 5, f: 5, h: 5},
-	"<unknown field found>"
+	"bad value"
 ])
 
 
@@ -261,19 +261,19 @@ validationTests.push([
 validationTests.push([
 	Runtyper.getType<{a: {b: number}} | {a: {b: string, c: boolean}}>(),
 	{a: {b: "nya"}},
-	"value.a.c"
+	"bad value"
 ])
 
 validationTests.push([
 	Runtyper.getType<{a: {b: number}} | {a: {b: string, c: boolean}}>(),
 	{a: {b: null}},
-	"value.a.b"
+	"bad value"
 ])
 
 validationTests.push([
 	Runtyper.getType<{a: {b: number}} | {a: {b: string, c: boolean}}>(),
 	{a: null},
-	"value.a"
+	"bad value"
 ])
 
 validationTests.push([
