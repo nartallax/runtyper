@@ -6,7 +6,7 @@ export class StackMap<K, V> {
 
 	push(key: K, value: V): void {
 		if(this.map.has(key)){
-			throw new Error("Duplicate key: " + value)
+			throw new Error("Duplicate key: " + key)
 		}
 		this.stack.push(key)
 		this.map.set(key, value)
@@ -23,8 +23,19 @@ export class StackMap<K, V> {
 		return [key, value]
 	}
 
+	update(key: K, value: V): void {
+		if(!this.map.has(key)){
+			throw new Error("No key: " + key)
+		}
+		this.map.set(key, value)
+	}
+
 	has(key: K): boolean {
 		return this.map.has(key)
+	}
+
+	get(key: K): V | undefined {
+		return this.map.get(key)
 	}
 
 	get size(): number {
@@ -46,6 +57,11 @@ export class StackMap<K, V> {
 		}
 
 		throw new Error("Rewind did not found the item")
+	}
+
+	clear(): void {
+		this.stack.length = 0
+		this.map.clear()
 	}
 
 }

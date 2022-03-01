@@ -1,8 +1,6 @@
 import {ValidatorFunctionBuilder} from "codegen/validator_function_builder"
 import {Runtyper} from "entrypoint"
-import {StackSet} from "utils/stack_set"
-
-class RecursiveValidatorBuildingError extends Error {}
+import {StackMap} from "utils/stack_map"
 
 export interface ErrorValidationResult {
 	value: unknown
@@ -13,6 +11,11 @@ export interface ErrorValidationResult {
 export type RawValidator = (value: unknown) => ErrorValidationResult | null | undefined | false
 export type WrappedValidator<T = unknown> = (value: unknown) => value is T
 
+interface ProxyFunctionPair {
+	set(realFn: (...args: unknown[]) => unknown): void
+	call(...args: unknown[]): unknown
+}
+
 /** An aggregator over all validation building process
  * Manages caches, individual validator builders etc */
 export class ValidatorBuilderImpl {
@@ -20,8 +23,7 @@ export class ValidatorBuilderImpl {
 	constructor(readonly opts: Runtyper.ValidatorBuilderOptions) {}
 
 	readonly rawValidators = new Map<string, RawValidator>()
-	readonly knownRecursiveTypes = new Set<string>()
-	readonly currentlyBuildingValidators = new StackSet<string>()
+	readonly currentlyBuildingValidators = new StackMap<string, ProxyFunctionPair | null>()
 	readonly wrappedValidators = new Map<string, WrappedValidator>()
 
 	build<T = unknown>(type: Runtyper.SimpleType): (value: unknown) => value is T {
@@ -44,7 +46,6 @@ export class ValidatorBuilderImpl {
 	}
 
 	private clear(): void {
-		this.knownRecursiveTypes.clear()
 		this.currentlyBuildingValidators.clear()
 	}
 
@@ -72,34 +73,35 @@ export class ValidatorBuilderImpl {
 			}
 
 			if(this.currentlyBuildingValidators.has(type.fullRefName)){
-				if(!this.knownRecursiveTypes.has(type.fullRefName)){
-					let newRecursiveTypes = this.currentlyBuildingValidators
-						.rewindPopUntil(typeName => typeName === type.fullRefName)
-					for(let typeName of newRecursiveTypes){
-						this.knownRecursiveTypes.add(typeName)
-					}
-					throw new RecursiveValidatorBuildingError()
+				let proxy = this.currentlyBuildingValidators.get(type.fullRefName)
+				if(!proxy){
+					proxy = this.makeProxyFunctionPair()
+					this.currentlyBuildingValidators.update(type.fullRefName, proxy)
 				}
+				return proxy.call as unknown as RawValidator
 			}
 		}
 
-		try {
-			if(type.fullRefName){
-				this.currentlyBuildingValidators.push(type.fullRefName)
-			}
-			let result = new ValidatorFunctionBuilder(this).build(type)
-			if(type.fullRefName){
-				this.currentlyBuildingValidators.pop()
-			}
-			return result
-		} catch(e){
-			if(e instanceof RecursiveValidatorBuildingError){
-				// just try it again, now with some information about recursive types
-				return this.buildInternal(type)
-			} else {
-				throw e
+		if(type.fullRefName){
+			this.currentlyBuildingValidators.push(type.fullRefName, null)
+		}
+		let result = new ValidatorFunctionBuilder(this).build(type, true)
+		if(type.fullRefName){
+			let [, proxy] = this.currentlyBuildingValidators.pop()!
+			if(proxy){
+				proxy.set(result)
 			}
 		}
+		return result
+	}
+
+	private makeProxyFunctionPair(): ProxyFunctionPair {
+		return new Function(`
+			var realFn = null
+			var set = fn => { realFn = fn }
+			var call = (...args) => realFn(...args)
+			return {set, call}
+		`)()
 	}
 
 

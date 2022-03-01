@@ -1,6 +1,6 @@
 import {CodePart, FunctionBuilder, FunctionCodePart, FunctionParameter} from "codegen/function_builder"
 import {Runtyper} from "entrypoint"
-import {ErrorValidationResult, ValidatorBuilderImpl} from "codegen/validator_builder"
+import {RawValidator, ValidatorBuilderImpl} from "codegen/validator_builder"
 import {ValidatorUtils} from "runtime/validator_utils"
 import {canBeUndefined, forEachTerminalTypeInUnion, forEachTerminalTypeInUnionIntersection, makeUnion} from "utils/simple_type_utils"
 import {isValidIdentifier, simpleTypeToString} from "runtime/type_stringifier"
@@ -36,24 +36,14 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 		}
 	}
 
-	build(type: Runtyper.SimpleType): (value: unknown) => ErrorValidationResult | null | undefined | false {
-		let part = this.buildPart(type)
-		return this.buildStartingAt(part, "value", codePreamble) as (value: unknown) => ErrorValidationResult | null | undefined | false
+	build(type: Runtyper.SimpleType, preventReuse = false): RawValidator {
+		let part = this.buildPart(type, preventReuse)
+		return this.buildStartingAt(part, "value", codePreamble) as RawValidator
 	}
 
-	private buildPart(type: Runtyper.SimpleType): CodePart {
-		if(type.fullRefName){
-			let prebuilt = this.manager.rawValidators.get(type.fullRefName)
-			if(prebuilt){
-				return this.importFunction(type, prebuilt)
-			}
-
-			if(this.manager.knownRecursiveTypes.has(type.fullRefName)){
-				return this.buildPartNoCache(type)
-			}
-
-			let newFn = this.manager.buildInternal(type)
-			return this.importFunction(type, newFn)
+	private buildPart(type: Runtyper.SimpleType, preventReuse = false): CodePart {
+		if(type.fullRefName && !preventReuse){
+			return this.importFunction(type, this.manager.buildInternal(type))
 		}
 
 		return this.buildPartNoCache(type)
