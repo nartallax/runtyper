@@ -33,20 +33,15 @@ class IntersectionContext {
 		}
 	}
 
-	check(valueCode: string): ErrorValidationResult | null {
+	check(): ErrorValidationResult | null {
 		for(let [obj, fieldNames] of this.map){
-			// TODO: refactor this into separate check, as this will include more types later
-			if(obj === null || typeof(obj) !== "object" || Array.isArray(obj)){
+			if(!ValidatorUtils.isTypicalObject(obj)){
 				continue
 			}
 			let fieldSet = new Set(fieldNames)
-			for(let k in obj){
-				if(!fieldSet.has(k)){
-					// we cannot put k in path
-					// because in case of deeply nested paths it will point to wrong location
-					// better have incomplete path rather than wrong path
-					return ValidatorUtils.err(obj, `!(${JSON.stringify(k)} in ${valueCode})`)
-				}
+			let err = ValidatorUtils.checkNoExtraFields(obj, fieldSet)
+			if(err){
+				return err
 			}
 		}
 		return null
@@ -54,6 +49,34 @@ class IntersectionContext {
 }
 
 export namespace ValidatorUtils {
+
+	/** Checks if the object is typical object (not null, not instance of some more specific type) */
+	export function isTypicalObject(obj: unknown): boolean {
+		return typeof(obj) === "object" && obj !== null && (!obj.constructor || obj.constructor === Object)
+	}
+
+	export function checkNoExtraFields(obj: {[k: string]: unknown}, fieldSet?: Set<string>): ErrorValidationResult | null {
+		// little ugly check, but better than checking each iteration
+		if(fieldSet){
+			for(let k in obj){
+				if(!fieldSet.has(k)){
+					return makeAbsentFieldError(obj, k)
+				}
+			}
+		} else {
+			for(let k in obj){
+				return makeAbsentFieldError(obj, k)
+			}
+		}
+		return null
+	}
+
+	function makeAbsentFieldError(obj: unknown, key: string): ErrorValidationResult {
+		// we cannot put k in path
+		// because in case of deeply nested paths it will point to wrong location
+		// better have incomplete path rather than wrong path
+		return ValidatorUtils.err(obj, `!(${JSON.stringify(key)} in obj)`)
+	}
 
 	export function err(value: unknown, expression: string, lastPathPart?: string): ErrorValidationResult {
 		let result: ErrorValidationResult = {

@@ -22,6 +22,7 @@ TBD
 can add validators to aliases of primitive types
 check all the TODOs
 support external types (consider never including class declarations and/or interfaces with function property values in code: such types will never produce a validator, but can easily make js generated code infinitely times larger)
+support binary classes (buffer, arraybuffer, typed arrays)
 test for optional function params
 test for function params with defaults
 test for function params with spread

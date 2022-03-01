@@ -128,6 +128,40 @@ export function canBeUndefined(type: Runtyper.SimpleType): boolean {
 	return hasUndefined
 }
 
+export function describeObjectTypeKeys(type: Runtyper.SimpleObjectType<Runtyper.SimpleType>): {fixed: Map<string, Runtyper.SimpleType> | null, stringIndexValue: Runtyper.SimpleType | null} {
+	let fixed = new Map<string, Runtyper.SimpleType>()
+	for(let k in type.properties){
+		fixed.set(k, type.properties[k]!)
+	}
+
+	let stringIndexValue: Runtyper.SimpleType | null = null
+
+	// known keys may be a part of index, let's also check that
+	// (type_simplifier does not yield constant keys in index btw, but still, let's check index key type)
+	if(type.index){
+		forEachTerminalTypeInUnion(type.index.keyType, keySubtype => {
+			if(keySubtype.type === "constant"){
+				if(typeof(keySubtype.value) !== "string"){
+					throw new Error("Cannot build validator: constant key of object is not string: " + JSON.stringify(keySubtype.value) + " (of type " + typeof(keySubtype.value) + ")")
+				}
+				if(fixed.has(keySubtype.value)){
+					throw new Error("Key " + JSON.stringify(keySubtype.value) + " is present both as field and part of index key type")
+				}
+				fixed.set(keySubtype.value, makeUnion([type.index!.valueType, {type: "constant", value: undefined}]))
+			} else if(keySubtype.type === "string"){
+				stringIndexValue = makeUnion([type.index!.valueType, {type: "constant", value: undefined}])
+			} else {
+				throw new Error("Cannot build validator: index key of object is not string: " + JSON.stringify(keySubtype))
+			}
+		})
+	}
+
+	return {
+		fixed: fixed.size === 0 ? null : fixed,
+		stringIndexValue
+	}
+}
+
 // export function simplifyIntersection(type: Runtyper.IntersectionType<Runtyper.SimpleType>): Runtyper.SimpleType {
 // 	if(type.types.length === 1){
 // 		let firstType = type.types[0]!

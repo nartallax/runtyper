@@ -2,7 +2,7 @@ import {CodePart, FunctionBuilder, FunctionCodePart, FunctionParameter} from "co
 import {Runtyper} from "entrypoint"
 import {RawValidator, ValidatorBuilderImpl} from "codegen/validator_builder"
 import {ValidatorUtils} from "runtime/validator_utils"
-import {canBeUndefined, forEachTerminalTypeInUnion, forEachTerminalTypeInUnionIntersection, makeUnion} from "utils/simple_type_utils"
+import {canBeUndefined, describeObjectTypeKeys, forEachTerminalTypeInUnionIntersection} from "utils/simple_type_utils"
 import {isValidIdentifier, simpleTypeToString} from "runtime/type_stringifier"
 import {CodeBuilder} from "codegen/code_builder"
 
@@ -233,7 +233,7 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 					return checkResult
 				}
 				if(parentIntCont === undefined){
-					checkResult = intCont.check(${JSON.stringify(paramName)})
+					checkResult = intCont.check()
 					if(checkResult){
 						return checkResult
 					}
@@ -249,11 +249,7 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 	private buildArrayCheckingCode(type: Runtyper.ArrayType<Runtyper.SimpleType>): CodePart {
 		return this.makeOrTakeFunction(type, "array", builder => {
 			let paramName = "arr"
-			let indexedParamName = paramName + "[i]"
-			let valueCond = this.buildPart(type.valueType)
-			let valueExpr = this.partToCode(valueCond, indexedParamName)
 			let initialCheck = `!Array.isArray(${paramName})`
-
 			builder.append(`(${paramName}){
 				if(${initialCheck}){
 					return ${this.makeDescribeErrorCall(paramName, initialCheck)}
@@ -262,7 +258,7 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 				var len = ${paramName}.length
 				var checkResult
 				for(var i = 0; i < len; i++){
-					checkResult = ${valueExpr}
+					checkResult = ${this.partToCode(this.buildPart(type.valueType), paramName + "[i]")}
 					if(checkResult){
 						checkResult.path.push(i)
 						return checkResult
@@ -366,116 +362,55 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 	private buildObjectCheckingCode(type: Runtyper.SimpleObjectType<Runtyper.SimpleType>): CodePart {
 		return this.makeOrTakeFunction(type, "object", builder => {
 			let paramName = "obj"
-			let fixedKeys = Object.keys(type.properties)
 
-			// building code for known keys
-			let makeFixedKeyCheckerCode = (propName: string, propType: Runtyper.SimpleType): string => {
-				let propCond = this.buildPart(propType)
-				let propExprCode = this.makeLiteralPropertyAccessExpression(paramName, propName)
-				return `
-					checkResult = ${this.partToCode(propCond, propExprCode)}
-					if(checkResult){
-						checkResult.path.push(${JSON.stringify(propName)})
-						return checkResult
-					}
-				`
+			let {fixed, stringIndexValue} = describeObjectTypeKeys(type)
+
+			let fieldSetParam: FunctionParameter | null = null
+			if(fixed){
+				fieldSetParam = this.addParameter("known_fields", new Set(fixed.keys()))
 			}
 
-			let fixedKeysCheckingParts = fixedKeys.map(propName => {
-				return makeFixedKeyCheckerCode(propName, type.properties[propName]!)
-			})
-
-			// known keys may be a part of index, let's also check that
-			// (type_simplifier does not yield constant keys in index btw, but still, let's check index key type)
-			let hasStringIndex = false
-			if(type.index){
-				forEachTerminalTypeInUnion(type.index.keyType, keySubtype => {
-					if(keySubtype.type === "constant"){
-						if(typeof(keySubtype.value) !== "string"){
-							throw new Error("Cannot build validator: constant key of object is not string: " + JSON.stringify(keySubtype.value) + " (of type " + typeof(keySubtype.value) + ")")
-						}
-						fixedKeysCheckingParts.push(makeFixedKeyCheckerCode(
-							keySubtype.value,
-							makeUnion([type.index!.valueType, {type: "constant", value: undefined}])
-						))
-						fixedKeys.push(keySubtype.value)
-					} else if(keySubtype.type === "string"){
-						hasStringIndex = true
-					} else {
-						throw new Error("Cannot build validator: index key of object is not string: " + JSON.stringify(keySubtype))
-					}
-				})
-			}
-
-			let setOfFieldNames: FunctionParameter | null = null
-			if(fixedKeys.length > 0){
-				setOfFieldNames = this.addParameter("known_fields", new Set(fixedKeys))
-			}
-
-			let unlistedPropsCheckingCode = this.buildObjectUnlistedPropertiesCheckingCode(setOfFieldNames?.name, !hasStringIndex ? null : type.index?.valueType, paramName, "intCont")
-
-			let initialCheck = `${paramName} === null || typeof(${paramName}) !== "object" || Array.isArray(${paramName})`
+			let initialCheck = `!u.isTypicalObject(${paramName})`
 			builder.append(`(${paramName}, intCont){
 				if(${initialCheck}){
 					return ${this.makeDescribeErrorCall(paramName, initialCheck)}
 				}
 
 				var checkResult
-				${fixedKeysCheckingParts.join("\n")}
+				${!fixed ? "" : [...fixed].map(([key, type]) => `
+					checkResult = ${this.partToCode(this.buildPart(type), this.makeLiteralPropertyAccessExpression(paramName, key))}
+					if(checkResult){
+						checkResult.path.push(${JSON.stringify(key)})
+						return checkResult
+					}
+				`).join("\n")}
 
-				${unlistedPropsCheckingCode}
+				${stringIndexValue ? `
+					for(var propName in ${paramName}){
+						checkResult = ${this.partToCode(this.buildPart(stringIndexValue), paramName + "[propName]")}
+						if(checkResult){
+							checkResult.path.push(propName)
+							return checkResult
+						}
+					}
+				` : this.manager.opts.onUnknownFieldInObject === "allow_anything" ? "" : `
+					if(intCont){
+						${!fieldSetParam ? "/* no fieldset, nothing to add to context */" : `
+							for(var i of ${fieldSetParam.name}){
+								intCont.add(${paramName}, i)
+							}
+						`}
+					} else {
+						checkResult = u.checkNoExtraFields(${paramName}${!fieldSetParam ? "" : ", " + fieldSetParam.name})
+						if(checkResult){
+							return checkResult
+						}
+					}
+				`}
 
 				return false
 			}`)
 		})
-	}
-
-	private buildObjectUnlistedPropertiesCheckingCode(fieldSetName: string | null | undefined, stringIndexType: Runtyper.SimpleType | null | undefined, paramName: string, parentIntContName: string | null): string {
-		let skipKnownPropCode = ""
-		if(fieldSetName){
-			skipKnownPropCode = `
-				if(${fieldSetName}.has(propName)){
-					continue
-				}`
-		}
-
-		let wrapInCycle = (code: string): string => {
-			return `for(var propName in ${paramName}){${code}\n\t}`
-		}
-
-		let unlistedPropsCheckingCode: string
-		if(this.manager.opts.onUnknownFieldInObject === "allow_anything"){
-			unlistedPropsCheckingCode = ""
-		} else if(!stringIndexType){
-			let exprCode = "'!(' + JSON.stringify(propName) + ' in " + paramName + ")'"
-			unlistedPropsCheckingCode = `${skipKnownPropCode}
-				return ${this.makeDescribeErrorCallWithRawCode(paramName, exprCode)}`
-			unlistedPropsCheckingCode = wrapInCycle(unlistedPropsCheckingCode)
-			if(fieldSetName && parentIntContName){
-				unlistedPropsCheckingCode = `
-					if(${parentIntContName}){
-						for(var i of ${fieldSetName}){
-							${parentIntContName}.add(${paramName}, i)
-						}
-					} else {
-						${unlistedPropsCheckingCode}
-					}`
-			}
-		} else {
-			let propCond = this.buildPart(makeUnion([
-				stringIndexType,
-				{type: "constant", value: undefined}
-			]))
-			let indexTypeChecker = this.partToCode(propCond, paramName + "[propName]")
-			unlistedPropsCheckingCode = `${skipKnownPropCode}
-				checkResult = ${indexTypeChecker}
-				if(checkResult){
-					checkResult.path.push(propName)
-					return checkResult
-				}`
-			unlistedPropsCheckingCode = wrapInCycle(unlistedPropsCheckingCode)
-		}
-		return unlistedPropsCheckingCode
 	}
 
 }

@@ -168,13 +168,13 @@ validationTests.push([
 validationTests.push([
 	Runtyper.getType<IntersectionOfUnions>(),
 	{a: 5, b: 5, d: 5},
-	"!(\"b\" in value)"
+	"!(\"b\" in obj)"
 ])
 
 validationTests.push([
 	Runtyper.getType<IntersectionOfUnions>(),
 	{a: 5, c: 5, d: 5},
-	"!(\"d\" in value)"
+	"!(\"d\" in obj)"
 ])
 
 
