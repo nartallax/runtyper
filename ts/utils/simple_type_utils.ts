@@ -35,7 +35,6 @@ export function makeUnion(types: readonly Runtyper.SimpleType[], baseType: Runty
 				let simplified = makeIntersection(type.types, type)
 				otherTypes.push(simplified)
 			} else {
-				void simplifyNestedIntersections // TODO: debug void, remove
 				otherTypes.push(type)
 			}
 		})
@@ -324,14 +323,6 @@ export function makeIntersection(types: readonly Runtyper.SimpleType[], baseType
 
 	throw new Error("Cannot make intersection: reached end of the function and don't know what to do; source types are " + JSON.stringify(types))
 }
-
-// TODO: make tests out of this
-// let x: {a: number, b: number | string} & {b: number | boolean, c: number} = null as any
-// let x: {a: number, b: {d: number | string}} & {b: {d: number | boolean}, c: number} = null as any
-// let x: {a: number, b: {e: number | string}} & {b: {d: number | boolean}, c: number} = null as any
-// let x: {[k: string | number]: number} & {[k: string]: number} = null as any // x[5] = 5
-// let x: {[k: string]: number | boolean} & {[k: string]: number | string} = null as any
-// let x: {[k: string]: number | string} & {f: boolean} = null as any
 
 function mergeObjectsInIntersection(a: Runtyper.SimpleObjectType<Runtyper.SimpleType>, b: Runtyper.SimpleObjectType<Runtyper.SimpleType>): Runtyper.SimpleObjectType<Runtyper.SimpleType> {
 	let props = {} as {[k: string]: Runtyper.SimpleType}

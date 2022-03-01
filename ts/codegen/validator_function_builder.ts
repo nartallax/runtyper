@@ -387,6 +387,12 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 
 				${stringIndexValue ? `
 					for(var propName in ${paramName}){
+						${!fieldSetParam ? "/* no fieldset */" : `
+							if(${fieldSetParam.name}.has(propName)){
+								/* Don't double-check fixed-name fields: their type may be overriden */
+								continue
+							}
+						`}
 						checkResult = ${this.partToCode(this.buildPart(stringIndexValue), paramName + "[propName]")}
 						if(checkResult){
 							checkResult.path.push(propName)

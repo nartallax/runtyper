@@ -378,3 +378,88 @@ validationTests.push([
 	{a: 5, b: 5},
 	null
 ])
+
+
+validationTests.push([
+	Runtyper.getType<{a: number, b: number | string} & {b: number | boolean, c: number}>(),
+	{a: 5, b: 5, c: 5},
+	null
+])
+
+validationTests.push([
+	Runtyper.getType<{a: number, b: number | string} & {b: number | boolean, c: number}>(),
+	{a: 5, b: "nya", c: 5},
+	"value.b"
+])
+
+validationTests.push([
+	Runtyper.getType<{a: number, b: number | string} & {b: number | boolean, c: number}>(),
+	{a: 5, b: false, c: 5},
+	"value.b"
+])
+
+validationTests.push([
+	Runtyper.getType<{a: number, b: number | string} & {b: number | boolean, c: number}>(),
+	{a: 5, c: 5},
+	"bad value"
+])
+
+
+
+validationTests.push([
+	Runtyper.getType<{a: number, b: {d: number | string}} & {b: {d: number | boolean}, c: number}>(),
+	{a: 5, c: 5, b: {d: 5}},
+	null
+])
+
+validationTests.push([
+	Runtyper.getType<{a: number, b: {d: number | string}} & {b: {d: number | boolean}, c: number}>(),
+	{a: 5, c: 5, b: {d: "owo"}},
+	"value.b.d"
+])
+
+
+
+validationTests.push([
+	Runtyper.getType<{a: number, b: {e: number | string}} & {b: {d: number | boolean}, c: number}>(),
+	{a: 5, c: 5, b: {d: 5, e: "uwu"}},
+	null
+])
+
+validationTests.push([
+	Runtyper.getType<{a: number, b: {e: number | string}} & {b: {d: number | boolean}, c: number}>(),
+	{a: 5, c: 5, b: {d: 5, e: 5}},
+	null
+])
+
+validationTests.push([
+	Runtyper.getType<{a: number, b: {e: number | string}} & {b: {d: number | boolean}, c: number}>(),
+	{a: 5, c: 5, b: {d: false, e: "uwu"}},
+	null
+])
+
+validationTests.push([
+	Runtyper.getType<{a: number, b: {e: number | string}} & {b: {d: number | boolean}, c: number}>(),
+	{a: 5, c: 5, b: {d: "uwu", e: "uwu"}},
+	"value.b.d"
+])
+
+validationTests.push([
+	Runtyper.getType<{a: number, b: {e: number | string}} & {b: {d: number | boolean}, c: number}>(),
+	{a: 5, c: 5, b: {d: 5, e: false}},
+	"value.b.e"
+])
+
+
+
+validationTests.push([
+	Runtyper.getType<{[k: string]: number | string} & {qweqweqweqwe: boolean}>(),
+	{a: 5, b: "x_x", qweqweqweqwe: false},
+	null
+])
+
+validationTests.push([
+	Runtyper.getType<{[k: string]: number | string} & {f: boolean}>(),
+	{a: 5, b: "x_x", f: 5},
+	"value.f"
+])
