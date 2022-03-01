@@ -35,7 +35,9 @@ function runSimplificationTests(): number {
 				console.error("\nSimplification test failed:")
 				console.error("source: " + JSON.stringify(srcType))
 				console.error("expected: " + JSON.stringify(result))
+				// console.dir(result, {depth: null})
 				console.error("got: " + JSON.stringify(simplifiedStructure))
+				// console.dir(simplifiedStructure, {depth: null})
 				failedCount++
 			}
 		} catch(e){
@@ -45,6 +47,8 @@ function runSimplificationTests(): number {
 			if(typeof(result) !== "string"){
 				console.error("\nSimplification test failed:")
 				console.error("source: " + JSON.stringify(srcType))
+				console.error("expected no error")
+				console.error("got error text: " + e.message)
 				console.error("stack: " + (e as Error).stack)
 				failedCount++
 			} else if(e.message.indexOf(result) < 0){
@@ -52,7 +56,7 @@ function runSimplificationTests(): number {
 				console.error("source: " + JSON.stringify(srcType))
 				console.error("expected error text: " + result)
 				console.error("got error text: " + e.message)
-				console.error("stack: " + e.stack)
+				// console.error("stack: " + e.stack)
 				failedCount++
 			}
 		}
@@ -120,7 +124,7 @@ function runValidationTests(): number {
 				console.error("value: " + JSON.stringify(value))
 				console.error("expected no error")
 				console.error("got error text: " + e.message)
-				// console.error("stack: " + e.stack)
+				console.error("stack: " + e.stack)
 				failCount++
 			} else if(e.message.indexOf(expectedResult) < 0){
 				console.error("\nValidation test failed:")

@@ -24,17 +24,17 @@ simplificationTests.push([
 
 simplificationTests.push([
 	Runtyper.getType<ManyMath>(),
-	{type: "intersection", types: [{type: "object", properties: {x: {type: "number"}, z: {type: "number"}}, refName: "MathProblem", fullRefName: "/types/union_intersection:MathProblem"}, {type: "object", properties: {x: {type: "number"}, y: {type: "number"}}, refName: "Point", fullRefName: "/types/union_intersection:Point"}], fullRefName: "/types/union_intersection:ManyMath", refName: "ManyMath"}
+	{type: "object", properties: {x: {type: "number"}, z: {type: "number"}, y: {type: "number"}}, refName: "ManyMath", fullRefName: "/types/union_intersection:ManyMath"}
 ])
 
 simplificationTests.push([
 	Runtyper.getType<MathAndName>(),
-	{type: "intersection", types: [{type: "union", types: [{type: "object", properties: {x: {type: "number"}, z: {type: "number"}}, refName: "MathProblem", fullRefName: "/types/union_intersection:MathProblem"}, {type: "object", properties: {x: {type: "number"}, y: {type: "number"}}, refName: "Point", fullRefName: "/types/union_intersection:Point"}]}, {type: "object", properties: {name: {type: "string"}}}], fullRefName: "/types/union_intersection:MathAndName", refName: "MathAndName"}
+	{type: "intersection", types: [{type: "object", properties: {name: {type: "string"}}}, {type: "union", types: [{type: "object", properties: {x: {type: "number"}, z: {type: "number"}}, refName: "MathProblem", fullRefName: "/types/union_intersection:MathProblem"}, {type: "object", properties: {x: {type: "number"}, y: {type: "number"}}, refName: "Point", fullRefName: "/types/union_intersection:Point"}]}], refName: "MathAndName", fullRefName: "/types/union_intersection:MathAndName"}
 ])
 
 simplificationTests.push([
 	Runtyper.getType<MathAndSomethingElseWithDefault>(),
-	{type: "intersection", types: [{type: "object", properties: {x: {type: "number"}, y: {type: "number"}}, refName: "Point", fullRefName: "/types/union_intersection:Point"}, {type: "object", properties: {x: {type: "number"}, z: {type: "number"}}, refName: "MathProblem", fullRefName: "/types/union_intersection:MathProblem"}], fullRefName: "/types/union_intersection:MathAndSomethingElseWithDefault", refName: "MathAndSomethingElseWithDefault"}
+	{type: "object", properties: {x: {type: "number"}, y: {type: "number"}, z: {type: "number"}}, refName: "MathAndSomethingElseWithDefault", fullRefName: "/types/union_intersection:MathAndSomethingElseWithDefault"}
 ])
 
 
@@ -52,13 +52,13 @@ simplificationTests.push([Runtyper.getType<U_NeverAndConsts>(), {type: "constant
 
 
 simplificationTests.push([Runtyper.getType<I_AnyUnknownNever>(), {type: "never", fullRefName: "/types/union_intersection:I_AnyUnknownNever", refName: "I_AnyUnknownNever"}])
-simplificationTests.push([Runtyper.getType<I_AnyUnknown>(), {type: "intersection", types: [{type: "any"}, {type: "unknown"}], fullRefName: "/types/union_intersection:I_AnyUnknown", refName: "I_AnyUnknown"}])
-simplificationTests.push([Runtyper.getType<I_AnyAndType>(), {type: "intersection", types: [{type: "any"}, {type: "string"}], fullRefName: "/types/union_intersection:I_AnyAndType", refName: "I_AnyAndType"}])
-simplificationTests.push([Runtyper.getType<I_AnyAndConst>(), {type: "intersection", types: [{type: "any"}, {type: "constant", value: 5}], fullRefName: "/types/union_intersection:I_AnyAndConst", refName: "I_AnyAndConst"}])
-simplificationTests.push([Runtyper.getType<I_AnyAndConsts>(), {type: "intersection", types: [{type: "any"}, {type: "constant", value: 5}, {type: "constant", value: 10}], fullRefName: "/types/union_intersection:I_AnyAndConsts", refName: "I_AnyAndConsts"}])
-simplificationTests.push([Runtyper.getType<I_UnknownAndType>(), {type: "intersection", types: [{type: "unknown"}, {type: "string"}], fullRefName: "/types/union_intersection:I_UnknownAndType", refName: "I_UnknownAndType"}])
-simplificationTests.push([Runtyper.getType<I_UnknownAndConst>(), {type: "intersection", types: [{type: "unknown"}, {type: "constant", value: 5}], fullRefName: "/types/union_intersection:I_UnknownAndConst", refName: "I_UnknownAndConst"}])
-simplificationTests.push([Runtyper.getType<I_UnknownAndConsts>(), {type: "intersection", types: [{type: "unknown"}, {type: "constant", value: 5}, {type: "constant", value: 10}], fullRefName: "/types/union_intersection:I_UnknownAndConsts", refName: "I_UnknownAndConsts"}])
+simplificationTests.push([Runtyper.getType<I_AnyUnknown>(), {type: "any", refName: "I_AnyUnknown", fullRefName: "/types/union_intersection:I_AnyUnknown"}])
+simplificationTests.push([Runtyper.getType<I_AnyAndType>(), {type: "any", refName: "I_AnyAndType", fullRefName: "/types/union_intersection:I_AnyAndType"}])
+simplificationTests.push([Runtyper.getType<I_AnyAndConst>(), {type: "any", refName: "I_AnyAndConst", fullRefName: "/types/union_intersection:I_AnyAndConst"}])
+simplificationTests.push([Runtyper.getType<I_AnyAndConsts>(), {type: "never", refName: "I_AnyAndConsts", fullRefName: "/types/union_intersection:I_AnyAndConsts"}])
+simplificationTests.push([Runtyper.getType<I_UnknownAndType>(), {type: "string", refName: "I_UnknownAndType", fullRefName: "/types/union_intersection:I_UnknownAndType"}])
+simplificationTests.push([Runtyper.getType<I_UnknownAndConst>(), {type: "constant", value: 5, refName: "I_UnknownAndConst", fullRefName: "/types/union_intersection:I_UnknownAndConst"}])
+simplificationTests.push([Runtyper.getType<I_UnknownAndConsts>(), {type: "never", refName: "I_UnknownAndConsts", fullRefName: "/types/union_intersection:I_UnknownAndConsts"}])
 simplificationTests.push([Runtyper.getType<I_NeverAndType>(), {type: "never", fullRefName: "/types/union_intersection:I_NeverAndType", refName: "I_NeverAndType"}])
 simplificationTests.push([Runtyper.getType<I_NeverAndConst>(), {type: "never", fullRefName: "/types/union_intersection:I_NeverAndConst", refName: "I_NeverAndConst"}])
 simplificationTests.push([Runtyper.getType<I_NeverAndConsts>(), {type: "never", fullRefName: "/types/union_intersection:I_NeverAndConsts", refName: "I_NeverAndConsts"}])

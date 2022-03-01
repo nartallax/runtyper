@@ -1,42 +1,48 @@
 import {Runtyper} from "entrypoint"
 import {getInferredUnknownName} from "inferred_unknown"
 
+export function copyTypeRefs(resultType: Runtyper.SimpleType, baseType: Runtyper.SimpleType | null): Runtyper.SimpleType {
+	if(!baseType || !baseType.refName){
+		return resultType
+	} else {
+		return {
+			...resultType,
+			refName: baseType.refName,
+			fullRefName: baseType.fullRefName
+		}
+	}
+}
+
 /** Given some selection of types, make type that represents them as union
  * May return a lot of different types, not only union types */
-export function makeUnion(types: readonly Runtyper.SimpleType[], dropConstantsBySimpleTypes = true): Runtyper.SimpleType {
+export function makeUnion(types: readonly Runtyper.SimpleType[], baseType: Runtyper.SimpleType | null = null, dropConstantsBySimpleTypes = true, simplifyNestedIntersections = true): Runtyper.SimpleType {
 	let consts = [] as Runtyper.ConstantType["value"][]
 	let otherTypes = [] as Runtyper.SimpleType[]
 	let simpleTypes = [] as ("string" | "number" | "boolean")[]
 	let hasAny = false
-	types.forEach(type => forEachTerminalTypeInUnion(type, type => {
-		if(type.type === "constant"){
-			consts.push(type.value)
-		} else {
-			if(type.type === "string" || type.type === "number" || type.type === "boolean"){
+	types.forEach(type => {
+		forEachTerminalTypeInUnion(type, type => {
+			if(type.type === "constant"){
+				consts.push(type.value)
+			} else if(type.type === "string" || type.type === "number" || type.type === "boolean"){
+				otherTypes.push(type)
 				simpleTypes.push(type.type)
+			} else if(type.type === "never"){
+				// nothing, nevers are dropped from unions
 			} else if(type.type === "any"){
 				hasAny = true
+			} else if(type.type === "intersection" && simplifyNestedIntersections){
+				let simplified = makeIntersection(type.types, type)
+				otherTypes.push(simplified)
+			} else {
+				void simplifyNestedIntersections // TODO: debug void, remove
+				otherTypes.push(type)
 			}
-			otherTypes.push(type)
-		}
-	}))
+		})
+	})
 
 	if(hasAny){
 		return {type: "any"}
-	}
-
-	if(consts.length === 0 && otherTypes.length === 1){
-		return otherTypes[0]!
-	}
-	otherTypes = otherTypes.filter(x => x.type !== "never")
-
-	if(consts.length === 0 && otherTypes.length === 1){
-		return otherTypes[0]!
-	}
-	let hasUnknown = !!otherTypes.find(x => x.type === "unknown" && getInferredUnknownName(x) === null)
-	if(hasUnknown){
-		// unknown | anything_else = unknown
-		return {type: "unknown"}
 	}
 
 	if(dropConstantsBySimpleTypes){
@@ -57,12 +63,18 @@ export function makeUnion(types: readonly Runtyper.SimpleType[], dropConstantsBy
 		otherTypes.push({type: "constant_union", value: consts})
 	}
 
+	let hasUnknown = !!otherTypes.find(x => x.type === "unknown" && getInferredUnknownName(x) === null)
+	if(hasUnknown){
+		// unknown | anything_else = unknown
+		return copyTypeRefs({type: "unknown"}, baseType)
+	}
+
 	if(otherTypes.length === 0){
-		return {type: "never"}
+		return copyTypeRefs({type: "never"}, baseType)
 	} else if(otherTypes.length === 1){
-		return otherTypes[0]!
+		return copyTypeRefs(otherTypes[0]!, baseType)
 	} else {
-		return {type: "union", types: otherTypes}
+		return copyTypeRefs({type: "union", types: otherTypes}, baseType)
 	}
 }
 
@@ -96,7 +108,7 @@ export function removeTypesFromUnion(type: Runtyper.SimpleType, shouldBeRemoved:
 			resultTypePack.push(type)
 		}
 	})
-	return !dropped ? type : makeUnion(resultTypePack, false)
+	return !dropped ? type : makeUnion(resultTypePack, type, false)
 }
 
 export function removeConstantFromType(type: Runtyper.SimpleType, value: Runtyper.ConstantType["value"]): Runtyper.SimpleType {
@@ -162,88 +174,197 @@ export function describeObjectTypeKeys(type: Runtyper.SimpleObjectType<Runtyper.
 	}
 }
 
-// export function simplifyIntersection(type: Runtyper.IntersectionType<Runtyper.SimpleType>): Runtyper.SimpleType {
-// 	if(type.types.length === 1){
-// 		let firstType = type.types[0]!
-// 		return firstType.type === "intersection" ? simplifyIntersection(firstType) : firstType
-// 	} else if(type.types.length === 0){
-// 		return {type: "never"}
-// 	}
-// 	let hasAny = false, hasUnknown = false, hasNever = false
-// 	let consts = null as Set<Runtyper.ConstantType["value"]> | null
-// 	let primitiveTypes = null as null | Set<"string" | "number" | "boolean" | "object" | "array">
-// 	let objectTypes = [] as Runtyper.SimpleObjectType<Runtyper.SimpleType>[]
+export function makeIntersection(types: readonly Runtyper.SimpleType[], baseType: Runtyper.SimpleType | null, simplifyNestedUnions = true): Runtyper.SimpleType {
+	// do I really need this early return?
+	if(types.length === 1){
+		let firstType = types[0]!
+		switch(firstType.type){
+			case "intersection": return makeIntersection(firstType.types, baseType)
+			case "union": return makeUnion(firstType.types, baseType)
+			default: return firstType
+		}
+	} else if(types.length === 0){
+		return copyTypeRefs({type: "never"}, baseType)
+	}
 
-// 	let addSubtype = (subtype: Runtyper.SimpleType): void => {
-// 		switch(subtype.type){
-// 			case "constant":{
-// 				consts = !consts || consts.has(subtype.value) ? new Set([subtype.value]) : new Set()
-// 				break
-// 			}
-// 			case "constant_union":{
-// 				if(!consts){
-// 					consts = new Set(subtype.value)
-// 				} else {
-// 					let unionVals = new Set(subtype.value)
-// 					for(let v of [...consts]){
-// 						if(!unionVals.has(v)){
-// 							consts.delete(v)
-// 						}
-// 					}
-// 				}
-// 				break
-// 			}
-// 			case "any":
-// 				hasAny = true
-// 				break
-// 			case "unknown":
-// 				hasUnknown = true
-// 				break
-// 			case "never":
-// 				hasNever = true
-// 				break
-// 			case "string":
-// 			case "number":
-// 			case "boolean":
-// 				primitiveTypes = !primitiveTypes || primitiveTypes.has(subtype.type) ? new Set([subtype.type]) : new Set()
-// 				break
-// 			case "object":
-// 				primitiveTypes = !primitiveTypes || primitiveTypes.has(subtype.type) ? new Set([subtype.type]) : new Set()
-// 				objectTypes.push(subtype)
-// 				break
-// 			case "tuple":
-// 			case "array":
-// 				primitiveTypes = !primitiveTypes || primitiveTypes.has("array") ? new Set(["array"]) : new Set()
-// 				break
-// 			case "intersection":
-// 				addSubtype(subtype)
-// 				break
-// 			case "union":{
-// 				let unionConsts = new Set<Runtyper.ConstantType["value"]>()
-// 				let unionPrimitives = new Set<"string" | "number" | "boolean" | "object" | "array">()
-// 				forEachTerminalTypeInUnion(subtype, subsubtype => {
-// 					switch(subsubtype.type){
-// 						case "constant":
-// 							unionConsts.add(subsubtype.value)
-// 							break
-// 						case "string":
-// 						case "number":
-// 						case "boolean":
-// 						case "object":
-// 							unionPrimitives.add(subsubtype.type)
-// 							break
-// 						case "array":
-// 						case "tuple":
-// 							unionPrimitives.add("array")
-// 							break
-// 						case "
-// 					}
-// 				})
-// 			}
-// 		}
+	let hasAny = false, hasUnknown = false, hasNever = false
+	let consts = null as Set<Runtyper.ConstantType["value"]> | null
+	// null means no primitive types, false means there is intersection of more than one
+	let primitiveType = null as null | "string" | "number" | "boolean" | "object" | "array" | false
 
-// 		for(let subtype of type.types){
-// 			addSubtype(subtype)
-// 		}
-// 	}
-// }
+	let addPrimitiveType = (name: "string" | "number" | "boolean" | "object" | "array") => {
+		primitiveType = primitiveType === null || primitiveType === name ? name : false
+	}
+
+	let objectTypes = [] as Runtyper.SimpleObjectType<Runtyper.SimpleType>[]
+	let otherTypes = [] as Runtyper.SimpleType[]
+
+	let addSubtype = (subtype: Runtyper.SimpleType): void => {
+		switch(subtype.type){
+			case "constant":{
+				consts = !consts || consts.has(subtype.value) ? new Set([subtype.value]) : new Set()
+				break
+			}
+			case "constant_union":{
+				if(!consts){
+					consts = new Set(subtype.value)
+				} else {
+					let unionVals = new Set(subtype.value)
+					for(let v of [...consts]){
+						if(!unionVals.has(v)){
+							consts.delete(v)
+						}
+					}
+				}
+				break
+			}
+			case "any":
+				hasAny = true
+				break
+			case "unknown":
+				hasUnknown = true
+				break
+			case "never":
+				hasNever = true
+				break
+			case "string":
+			case "number":
+			case "boolean":
+				addPrimitiveType(subtype.type)
+				break
+			case "object":
+				addPrimitiveType(subtype.type)
+				objectTypes.push(subtype)
+				break
+			case "tuple":
+			case "array":
+				otherTypes.push(subtype)
+				addPrimitiveType("array")
+				break
+			case "intersection":
+				for(let subsubtype of subtype.types){
+					addSubtype(subsubtype)
+				}
+				break
+			case "union":{
+				if(simplifyNestedUnions){
+					subtype = makeUnion(subtype.types, subtype)
+					if(subtype.type !== "union"){
+						addSubtype(subtype)
+						break
+					}
+				}
+				otherTypes.push(subtype)
+				break
+			}
+			// default: throw new Error("I forgot to process type " + subtype.type + " in intersection simplification")
+		}
+	}
+
+	for(let subtype of types){
+		addSubtype(subtype)
+	}
+
+	if(primitiveType === false){
+		return copyTypeRefs({type: "never"}, baseType)
+	}
+
+	if(primitiveType !== null){
+		if(primitiveType === "string" || primitiveType === "number" || primitiveType === "boolean"){
+			otherTypes.push({type: primitiveType})
+		}
+		if(consts){
+			for(let v of [...consts]){
+				if(typeof(v) !== primitiveType){
+					consts.delete(v)
+				}
+			}
+		}
+	}
+
+	if((consts && consts.size === 0)){
+		return copyTypeRefs({type: "never"}, baseType)
+	}
+
+	if(hasNever){
+		return copyTypeRefs({type: "never"}, baseType)
+	}
+
+	if(hasAny){
+		return copyTypeRefs({type: "any"}, baseType)
+	}
+
+	if(consts && consts.size === 1){
+		for(let v of consts){
+			return copyTypeRefs({type: "constant", value: v}, baseType)
+		}
+	}
+
+	let objType = objectTypes[0]
+	for(let i = 1; i < objectTypes.length; i++){
+		objType = mergeObjectsInIntersection(objType!, objectTypes[i]!)
+	}
+
+	if(objType){
+		if(otherTypes.length < 1){
+			return copyTypeRefs(objType, baseType)
+		}
+		return copyTypeRefs({type: "intersection", types: [objType, ...otherTypes]}, baseType)
+	}
+	if(otherTypes.length === 1){
+		return copyTypeRefs(otherTypes[0]!, baseType)
+	}
+	if(otherTypes.length > 1){
+		return copyTypeRefs({type: "intersection", types: otherTypes}, baseType)
+	}
+
+	if(hasUnknown){
+		return copyTypeRefs({type: "unknown"}, baseType)
+	}
+
+	throw new Error("Cannot make intersection: reached end of the function and don't know what to do; source types are " + JSON.stringify(types))
+}
+
+// TODO: make tests out of this
+// let x: {a: number, b: number | string} & {b: number | boolean, c: number} = null as any
+// let x: {a: number, b: {d: number | string}} & {b: {d: number | boolean}, c: number} = null as any
+// let x: {a: number, b: {e: number | string}} & {b: {d: number | boolean}, c: number} = null as any
+// let x: {[k: string | number]: number} & {[k: string]: number} = null as any // x[5] = 5
+// let x: {[k: string]: number | boolean} & {[k: string]: number | string} = null as any
+// let x: {[k: string]: number | string} & {f: boolean} = null as any
+
+function mergeObjectsInIntersection(a: Runtyper.SimpleObjectType<Runtyper.SimpleType>, b: Runtyper.SimpleObjectType<Runtyper.SimpleType>): Runtyper.SimpleObjectType<Runtyper.SimpleType> {
+	let props = {} as {[k: string]: Runtyper.SimpleType}
+
+	for(let k in a.properties){
+		if(k in b.properties){
+			props[k] = makeIntersection([a.properties[k]!, b.properties[k]!], null)
+		} else {
+			props[k] = a.properties[k]!
+		}
+	}
+
+	for(let k in b.properties){
+		if(!(k in props)){
+			props[k] = b.properties[k]!
+		}
+	}
+
+	let index = a.index || b.index
+	if(a.index && b.index){
+		let keyType = makeUnion([a.index.keyType, b.index.keyType], null)
+		if(!isObjectIndexKeyType(keyType)){
+			throw new Error("Failed to make union of two key types: the result is not valid key type. Source types are " + JSON.stringify(a.index.keyType) + " and " + JSON.stringify(b.index.keyType))
+		}
+		index = {
+			keyType,
+			valueType: makeIntersection([a.index.valueType, b.index.valueType], null)
+		}
+	}
+
+	let result: Runtyper.SimpleObjectType<Runtyper.SimpleType> = {type: "object", properties: props}
+	if(index){
+		result = {...result, index}
+	}
+	return result
+}

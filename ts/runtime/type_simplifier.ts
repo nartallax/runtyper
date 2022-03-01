@@ -1,7 +1,7 @@
 import {Runtyper} from "entrypoint"
 import {refTypes, valueTypes} from "runtime/runtime"
 import {deepEquals, RoRecord} from "utils/utils"
-import {forEachTerminalTypeInUnion, isObjectIndexKeyType, makeUnion, removeConstantFromType, removeTypesFromUnion} from "utils/simple_type_utils"
+import {copyTypeRefs, forEachTerminalTypeInUnion, isObjectIndexKeyType, makeIntersection, makeUnion, removeConstantFromType, removeTypesFromUnion} from "utils/simple_type_utils"
 import {getInferredUnknownName, makeInferredUnknown} from "inferred_unknown"
 import {simpleTypeToString} from "runtime/type_stringifier"
 
@@ -29,7 +29,7 @@ export class TypeSimplifier {
 	simplify(type: Runtyper.Type, genArgs: {[name: string]: Runtyper.SimpleType} = {}): Runtyper.SimpleType {
 		try {
 			this.currentType = type
-			return this.simplifyInternal(type, genArgs, null)
+			return new FinalSimplifier().simplifyFinal(this.simplifyInternal(type, genArgs, null))
 		} finally {
 			this.currentType = null
 			this.currentlyDefiningRefTypeValues.clear()
@@ -92,7 +92,7 @@ export class TypeSimplifier {
 					fullRefName: fullName,
 					refName: this.makeRefName(reference, targetType, genArgs, false)
 				}
-				this.currentlyDefiningRefTypeValues.set(fullName, this.makeFreshMutableObject(refInfo))
+				this.currentlyDefiningRefTypeValues.set(fullName, makeFreshMutableObject(refInfo))
 				try {
 					result = this.simplifyInternal(targetType, genArgs, refInfo)
 					this.knownRefTypesCache.set(fullName, result)
@@ -118,16 +118,7 @@ export class TypeSimplifier {
 			}
 		}
 		let definingObject = this.currentlyDefiningRefTypeValues.get(ref.fullRefName)
-		return definingObject || this.makeFreshMutableObject(ref)
-	}
-
-	private makeFreshMutableObject(ref: RefInfo): MutableObjectType {
-		return {
-			type: "object",
-			properties: {},
-			refName: ref.refName,
-			fullRefName: ref.fullRefName
-		}
+		return definingObject || makeFreshMutableObject(ref)
 	}
 
 	private simplifyInternal(type: Runtyper.Type, genArgs: GenArgs, ref: RefInfo | null = null, throwOnCircular = false): Runtyper.SimpleType {
@@ -520,7 +511,7 @@ export class TypeSimplifier {
 	}
 
 	private makeUnion(types: Runtyper.SimpleType[]): Runtyper.SimpleType {
-		return makeUnion(types, false)
+		return makeUnion(types, null, false)
 	}
 
 	private findSourceInfers(cond: Runtyper.ConditionalType): string[] {
@@ -760,6 +751,85 @@ export class TypeSimplifier {
 		return this.makeUnion([type, {type: "constant", value}])
 	}
 
+}
+
+function makeFreshMutableObject(ref: Partial<RefInfo>): MutableObjectType {
+	let result: MutableObjectType = {
+		type: "object",
+		properties: {}
+	}
+	if(ref.refName){
+		result.refName = ref.refName
+		result.fullRefName = ref.fullRefName
+	}
+	return result
+}
+
+class FinalSimplifier {
+
+	// for recursive types
+	private typeCache = new Map<Runtyper.SimpleType, Runtyper.SimpleType>()
+
+	/** Simplify unions and intersections with all the optimizations */
+	simplifyFinal(type: Runtyper.SimpleType): Runtyper.SimpleType {
+		let recType = this.typeCache.get(type)
+		if(recType){
+			return recType
+		}
+
+		switch(type.type){
+			case "any":
+			case "unknown":
+			case "never":
+			case "string":
+			case "number":
+			case "boolean":
+			case "constant":
+			case "constant_union": return type
+			case "object":{
+				let result: MutableObjectType = makeFreshMutableObject(type)
+				this.typeCache.set(type, result)
+
+				for(let k in type.properties){
+					result.properties[k] = this.simplifyFinal(type.properties[k]!)
+				}
+
+				if(type.index){
+					let keyType = this.simplifyFinal(type.index.keyType)
+					if(!isObjectIndexKeyType(keyType)){
+						throw new Error("Failed to simplify key type: resulting type after simplification is not valid key type; source type is " + JSON.stringify(type.index.keyType))
+					}
+					result.index = {
+						keyType,
+						valueType: this.simplifyFinal(type.index.valueType)
+					}
+				}
+
+				return copyTypeRefs(result, type)
+			}
+			case "tuple":{
+				let types = type.valueTypes.map(type => {
+					if(type.type === "rest"){
+						return {type: "rest" as const, valueType: this.simplifyFinal(type.valueType)}
+					} else {
+						return this.simplifyFinal(type)
+					}
+				})
+				return copyTypeRefs({type: "tuple", valueTypes: types}, type)
+			}
+			case "array":{
+				return copyTypeRefs({type: "array", valueType: this.simplifyFinal(type.valueType)}, type)
+			}
+			case "intersection":{
+				let types = type.types.map(type => this.simplifyFinal(type))
+				return makeIntersection(types, type, false)
+			}
+			case "union":{
+				let types = type.types.map(type => this.simplifyFinal(type))
+				return makeUnion(types, type, true, false)
+			}
+		}
+	}
 }
 
 type InferMap = Map<string, Runtyper.SimpleType>
