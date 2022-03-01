@@ -134,9 +134,9 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 	private buildPartNoCache(type: Runtyper.SimpleType): CodePart {
 		switch(type.type){
 			case "number": return this.conditionToExpression(valueCode => {
-				let code = `(typeof(${valueCode}) !== "number"`
+				let code = `typeof(${valueCode}) !== "number"`
 				if(this.manager.opts.onNaNWhenExpectedNumber === "validation_error"){
-					code += ` || Number.isNaN(${valueCode}))`
+					code = `(${code} || Number.isNaN(${valueCode}))`
 				}
 				return code
 			})
@@ -226,20 +226,24 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 				.map(part => this.partToCode(part, paramName))
 				.join(" || ")
 
+			let allowExtraFields = this.manager.opts.onUnknownFieldInObject === "allow_anything"
+
 			builder.append(`(${paramName}, parentIntCont){
-				var intCont = u.makeIntCont()
+				${allowExtraFields ? "" : "var intCont = u.makeIntCont()"}
 				var checkResult = ${subtypesCheckingCode}
 				if(checkResult){
 					return checkResult
 				}
-				if(parentIntCont === undefined){
-					checkResult = intCont.check()
-					if(checkResult){
-						return checkResult
+				${allowExtraFields ? "" : `
+					if(parentIntCont === undefined){
+						checkResult = intCont.check()
+						if(checkResult){
+							return checkResult
+						}
+					} else {
+						parentIntCont.merge(intCont)
 					}
-				} else {
-					parentIntCont.merge(intCont)
-				}
+				`}
 	
 				return false
 			}`)

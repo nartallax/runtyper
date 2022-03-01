@@ -14,14 +14,16 @@ union/intersection + object with index (tests here)
 
 local goals:
 
-can add validators to aliases of primitive types
-check all the TODOs
-support external types (consider never including class declarations and/or interfaces with function property values in code: such types will never produce a validator, but can easily make js generated code infinitely times larger)
+validator builder flag tests (with intersections and unions too)
+discriminated union optimization (through switch)
 support binary classes (buffer, arraybuffer, typed arrays)
+support external types (consider never including class declarations and/or interfaces with function property values in code: such types will never produce a validator, but can easily make js generated code infinitely times larger)
+can add validators to aliases of primitive types
+
 test for optional function params
 test for function params with defaults
 test for function params with spread
 generic parameters of functions? what types will be returned? what validator will be built?
-validator builder flag tests (with intersections and unions too)
-discriminated union optimization (through switch)
+
 check d.ts for type leaks
+check all the TODOs

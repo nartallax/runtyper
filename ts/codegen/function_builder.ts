@@ -118,8 +118,23 @@ export abstract class FunctionBuilder {
 		}
 		code += `\n//# sourceURL=runtyper_validator_generated_code_${id}`
 
-		let outerFunction = new Function(...allValues.map(x => x.name), code)
-		let execResult = outerFunction(...allValues.map(x => x.value))
+		// eslint-disable-next-line @typescript-eslint/ban-types
+		let outerFunction: Function
+		try {
+			outerFunction = new Function(...allValues.map(x => x.name), code)
+		} catch(e){
+			let msg = e instanceof Error ? e.message : e + ""
+			throw new Error("Failed to compile validator: " + msg + "; code is " + code)
+		}
+
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		let execResult: any
+		try {
+			execResult = outerFunction(...allValues.map(x => x.value))
+		} catch(e){
+			let msg = e instanceof Error ? e.message : e + ""
+			throw new Error("Failed to execute compiled validator: " + msg + "; code is " + code)
+		}
 		return execResult
 	}
 
