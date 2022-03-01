@@ -11,7 +11,7 @@ validationTests.push([
 validationTests.push([
 	Runtyper.getType<NamedZ>(),
 	{x: 10, z: 5, name: "5"},
-	"bad value at path value.x (of type number): failed at expression <unknown field found>"
+	"!(\"x\" in obj)"
 ])
 
 validationTests.push([

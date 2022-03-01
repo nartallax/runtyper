@@ -72,15 +72,12 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 		return {isExpression: true, expression: () => text}
 	}
 
-	private makeDescribeErrorCall(valueCode: string, exprCode: string, propName?: string, propNameCode?: string): string {
-		let result = `u.err(${valueCode}, ${JSON.stringify(exprCode)}`
-		if(propName !== undefined){
-			result += `, ${JSON.stringify(propName)}`
-		} else if(propNameCode !== undefined){
-			result += ", " + propNameCode
-		}
-		result += ")"
-		return result
+	private makeDescribeErrorCall(valueCode: string, exprCode: string): string {
+		return this.makeDescribeErrorCallWithRawCode(valueCode, JSON.stringify(exprCode))
+	}
+
+	private makeDescribeErrorCallWithRawCode(valueCode: string, exprCodeRaw: string): string {
+		return `u.err(${valueCode}, ${exprCodeRaw})`
 	}
 
 	private makeComment(text: string): string {
@@ -236,7 +233,7 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 					return checkResult
 				}
 				if(parentIntCont === undefined){
-					checkResult = intCont.check()
+					checkResult = intCont.check(${JSON.stringify(paramName)})
 					if(checkResult){
 						return checkResult
 					}
@@ -450,8 +447,9 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 		if(this.manager.opts.onUnknownFieldInObject === "allow_anything"){
 			unlistedPropsCheckingCode = ""
 		} else if(!stringIndexType){
+			let exprCode = "'!(' + JSON.stringify(propName) + ' in " + paramName + ")'"
 			unlistedPropsCheckingCode = `${skipKnownPropCode}
-				return ${this.makeDescribeErrorCall(paramName + "[propName]", "<unknown field found>", undefined, "propName")}`
+				return ${this.makeDescribeErrorCallWithRawCode(paramName, exprCode)}`
 			unlistedPropsCheckingCode = wrapInCycle(unlistedPropsCheckingCode)
 			if(fieldSetName && parentIntContName){
 				unlistedPropsCheckingCode = `

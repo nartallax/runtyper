@@ -29,8 +29,4 @@ generic parameters of functions? what types will be returned? what validator wil
 validator builder flag tests (with intersections and unions too)
 discriminated union optimization (through switch) and tests (don't forget two-field keys)
 simplify trivial cases of intersections, as well as unions, in simplifier output
-rewrite validator builder: reuse functions between validators
-test: recursive types with two cycles instead of just one
 check d.ts for type leaks
-drop idea of joining recursive types in single function definition - no joining
-`<unknown field found>` -> `!(${fieldname} in obj)`

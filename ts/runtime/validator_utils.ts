@@ -33,7 +33,7 @@ class IntersectionContext {
 		}
 	}
 
-	check(): ErrorValidationResult | null {
+	check(valueCode: string): ErrorValidationResult | null {
 		for(let [obj, fieldNames] of this.map){
 			// TODO: refactor this into separate check, as this will include more types later
 			if(obj === null || typeof(obj) !== "object" || Array.isArray(obj)){
@@ -42,14 +42,10 @@ class IntersectionContext {
 			let fieldSet = new Set(fieldNames)
 			for(let k in obj){
 				if(!fieldSet.has(k)){
-					return {
-						expression: "<unknown field found>",
-						// we cannot just put k in path
-						// because in case of deeply nested paths it will point to wrong location
-						// better have incomplete path rather than wrong path
-						path: [],
-						value: obj
-					}
+					// we cannot put k in path
+					// because in case of deeply nested paths it will point to wrong location
+					// better have incomplete path rather than wrong path
+					return ValidatorUtils.err(obj, `!(${JSON.stringify(k)} in ${valueCode})`)
 				}
 			}
 		}

@@ -41,7 +41,7 @@ validationTests.push([
 validationTests.push([
 	Runtyper.getType<MappedPoint>(),
 	{x: 5, y: 10, z: 15},
-	"bad value at path value.z (of type number)"
+	"!(\"z\" in obj)"
 ])
 
 validationTests.push([
@@ -119,7 +119,7 @@ validationTests.push([
 validationTests.push([
 	Runtyper.getType<XPoint>(),
 	{z: {i: {j: {x: 5, y: 10, z: 15}}}},
-	"at path value.z.i.j.z"
+	"!(\"z\" in obj)"
 ])
 
 

@@ -168,13 +168,13 @@ validationTests.push([
 validationTests.push([
 	Runtyper.getType<IntersectionOfUnions>(),
 	{a: 5, b: 5, d: 5},
-	"<unknown field found>"
+	"!(\"b\" in value)"
 ])
 
 validationTests.push([
 	Runtyper.getType<IntersectionOfUnions>(),
 	{a: 5, c: 5, d: 5},
-	"<unknown field found>"
+	"!(\"d\" in value)"
 ])
 
 

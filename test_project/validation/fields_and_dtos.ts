@@ -17,7 +17,7 @@ validationTests.push([
 validationTests.push([
 	Runtyper.getType<Car>(),
 	{model: "x5", color: "red", manufacturingDate: 5, stateNum: "owo"},
-	"bad value at path value.stateNum (of type string)"
+	"!(\"stateNum\" in obj)"
 ])
 
 validationTests.push([

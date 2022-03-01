@@ -11,7 +11,7 @@ validationTests.push([
 validationTests.push([
 	Runtyper.getType<NamedDestrA>(),
 	{x: 5, y: 10, z: 15},
-	"unknown field found"
+	"!(\"z\" in obj)"
 ])
 
 validationTests.push([

@@ -23,7 +23,7 @@ validationTests.push([
 validationTests.push([
 	Runtyper.getType<Point>(),
 	{x: 5, y: 10, zzzzz: false},
-	"at path value.zzzzz (of type boolean)"
+	"!(\"zzzzz\" in obj)"
 ])
 
 validationTests.push([
