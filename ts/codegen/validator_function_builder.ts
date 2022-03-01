@@ -2,7 +2,7 @@ import {CodePart, FunctionBuilder, FunctionCodePart, FunctionParameter} from "co
 import {Runtyper} from "entrypoint"
 import {RawValidator, ValidatorBuilderImpl} from "codegen/validator_builder"
 import {ValidatorUtils} from "runtime/validator_utils"
-import {canBeUndefined, describeObjectTypeKeys, forEachTerminalTypeInUnionIntersection} from "utils/simple_type_utils"
+import {canBeUndefined, describeObjectTypeKeys, DiscriminatedTypePack, findDiscriminatorsInUnion, forEachTerminalTypeInUnionIntersection} from "utils/simple_type_utils"
 import {isValidIdentifier, simpleTypeToString} from "runtime/type_stringifier"
 import {CodeBuilder} from "codegen/code_builder"
 
@@ -160,24 +160,7 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 				}
 			case "never": return this.conditionToExpression(() => this.makeComment("type: never") + " true")
 			case "constant":{
-				let valueToCheck: string
-				if(type.value === undefined){
-					valueToCheck = "void 0"
-				} else if(type.value === null){
-					valueToCheck = "null"
-				} else if(type.value === true){
-					valueToCheck = "true"
-				} else if(type.value === false){
-					valueToCheck = "false"
-				} else if(typeof(type.value) === "string"){
-					valueToCheck = JSON.stringify(type.value)
-				} else if(typeof(type.value) === "number" && type.value % 1 === 0 && Math.abs(type.value) - 1 < Number.MAX_SAFE_INTEGER){
-					valueToCheck = type.value + ""
-				} else {
-					let name = "const_of_" + typeof(type.value)
-					let cval = this.addParameter(name, type.value)
-					valueToCheck = cval.name
-				}
+				let valueToCheck = this.constValueToCode(type.value)
 				return this.conditionToExpression(valueCode => `${valueCode} !== ${valueToCheck}`)
 			}
 			case "constant_union":{
@@ -186,12 +169,7 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 				return this.conditionToExpression(valueCode => `!${constrVal.name}.has(${valueCode})`)
 			}
 			case "intersection": return this.buildIntersectionCheckingCode(type)
-			case "union":{
-				let subtypesCheckingParts = type.types.map(type => this.buildPart(type))
-				return this.conditionToExpression(valueCode => "("
-					+ subtypesCheckingParts.map(part => this.partToCode(part, valueCode)).join(" && ")
-					+ ")")
-			}
+			case "union": return this.buildUnionCheckingCode(type)
 			case "array": return this.buildArrayCheckingCode(type)
 			case "object": return this.buildObjectCheckingCode(type)
 			case "tuple": return this.buildTupleCheckingCode(type)
@@ -199,7 +177,75 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 		}
 	}
 
-	private buildIntersectionCheckingCode(type: Runtyper.IntersectionType<Runtyper.SimpleType> | Runtyper.UnionType<Runtyper.SimpleType>): CodePart {
+	private constValueToCode(value: Runtyper.ConstantType["value"]): string {
+		if(value === undefined){
+			return "void 0"
+		} else if(value === null){
+			return "null"
+		} else if(value === true){
+			return "true"
+		} else if(value === false){
+			return "false"
+		} else if(typeof(value) === "string"){
+			return JSON.stringify(value)
+		} else if(typeof(value) === "number" && value % 1 === 0 && Math.abs(value) - 1 < Number.MAX_SAFE_INTEGER){
+			return value + ""
+		} else {
+			let name = "const_of_" + typeof(value)
+			let cval = this.addParameter(name, value)
+			return cval.name
+		}
+	}
+
+	private buildUnionCheckingCode(type: Runtyper.UnionType<Runtyper.SimpleType>): CodePart {
+		let objTypes = type.types.filter(type => type.type === "object") as Runtyper.SimpleObjectType<Runtyper.SimpleType>[]
+		if(objTypes.length < 2){
+			let subtypesCheckingParts = type.types.map(type => this.buildPart(type))
+			return this.conditionToExpression(valueCode => "("
+				+ subtypesCheckingParts.map(part => this.partToCode(part, valueCode)).join(" && ")
+				+ ")")
+		}
+
+		let discrGroups = findDiscriminatorsInUnion(objTypes)
+
+		let nonObjTypes = type.types.filter(type => type.type !== "object")
+		return this.makeOrTakeFunction(type, "union", builder => {
+			let paramName = "value"
+
+			let initialCheck = `!u.isTypicalObject(${paramName})`
+			builder.append(`(${paramName}, intCont){
+				if(${initialCheck}){
+					return ${nonObjTypes.length < 1 ? this.makeDescribeErrorCall(paramName, initialCheck) : nonObjTypes.map(type => this.partToCode(this.buildPart(type), paramName)).join(" && ")}
+				}
+
+				${this.discriminationPackToCode(discrGroups, paramName)}
+			}`)
+		})
+	}
+
+	private discriminationPackToCode(pack: DiscriminatedTypePack, valueCode: string): string {
+		if(Array.isArray(pack)){
+			return "return " + pack.map(type => this.partToCode(this.buildPart(type), valueCode)).join(" && ")
+		}
+
+		let cases = [...pack.mapping].map(([value, subpack]) =>
+			"case " + this.constValueToCode(value) + ": " + this.discriminationPackToCode(subpack, valueCode)
+		).join("\n")
+
+		let dflt = Array.isArray(pack.default) && pack.default.length < 1
+			? "return " + this.makeDescribeErrorCall(
+				valueCode,
+				"!allowedConstantUnionValues.has(" + this.makeLiteralPropertyAccessExpression(valueCode, pack.propertyName) + ")"
+			)
+			: this.discriminationPackToCode(pack.default, valueCode)
+
+		return `switch(${this.makeLiteralPropertyAccessExpression(valueCode, pack.propertyName)}){
+			${cases}
+			default: ${dflt}
+		}`
+	}
+
+	private buildIntersectionCheckingCode(type: Runtyper.IntersectionType<Runtyper.SimpleType>): CodePart {
 		let subtypesCheckingParts = type.types.map(type => this.buildPart(type))
 
 		let objectTypes = [] as Runtyper.SimpleObjectType<Runtyper.SimpleType>[]

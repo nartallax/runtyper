@@ -359,3 +359,111 @@ function mergeObjectsInIntersection(a: Runtyper.SimpleObjectType<Runtyper.Simple
 	}
 	return result
 }
+
+
+export type DiscriminatedTypePack = DiscriminatedUnionGroup | Runtyper.SimpleObjectType<Runtyper.SimpleType>[]
+
+export interface DiscriminatedUnionGroup {
+	// switch(obj[propertyName]){
+	propertyName: string
+
+	// case "123": recursion
+	mapping: Map<Runtyper.ConstantType["value"], DiscriminatedTypePack>
+
+	// default: recursion
+	default: DiscriminatedTypePack
+}
+
+export function findDiscriminatorsInUnion(types: Runtyper.SimpleObjectType<Runtyper.SimpleType>[]): DiscriminatedTypePack {
+	let keys = {} as Record<string, Set<Runtyper.ConstantType["value"]>>
+	for(let obj of types){
+		for(let propName in obj.properties){
+			let propType = obj.properties[propName]!
+			let values = null as null | readonly Runtyper.ConstantType["value"][]
+			if(propType.type === "constant"){
+				values = [propType.value]
+			} else if(propType.type === "constant_union"){
+				values = propType.value
+			} else {
+				continue
+			}
+
+			if(propName in keys){
+				for(let value of values){
+					keys[propName]!.add(value)
+				}
+			} else {
+				keys[propName] = new Set(values)
+			}
+		}
+	}
+
+	let keyOrder = Object.keys(keys).sort((a, b) => keys[b]!.size - keys[a]!.size)
+	let result = groupByDiscriminatorKeys(types, keyOrder)
+	return result
+}
+
+function groupByDiscriminatorKeys(types: Runtyper.SimpleObjectType<Runtyper.SimpleType>[], keys: string[], i = 0): DiscriminatedTypePack {
+	if(keys.length <= i){
+		return types
+	}
+
+	let pack = groupByDiscriminatorKey(types, keys[i]!)
+	if(Array.isArray(pack)){
+		return groupByDiscriminatorKeys(pack, keys, i + 1)
+	}
+
+	for(let [key, value] of pack.mapping){
+		if(Array.isArray(value)){
+			pack.mapping.set(key, groupByDiscriminatorKeys(value, keys, i + 1))
+		}
+	}
+	if(Array.isArray(pack.default)){
+		pack.default = groupByDiscriminatorKeys(pack.default, keys, i + 1)
+	}
+
+	return pack
+}
+
+function groupByDiscriminatorKey(types: Runtyper.SimpleObjectType<Runtyper.SimpleType>[], key: string): DiscriminatedTypePack {
+	let dflt = [] as Runtyper.SimpleObjectType<Runtyper.SimpleType>[]
+	let map = new Map<Runtyper.ConstantType["value"], Runtyper.SimpleObjectType<Runtyper.SimpleType>[]>()
+
+	for(let type of types){
+		let propType = type.properties[key]
+		if(!propType){
+			dflt.push(type)
+			continue
+		}
+
+		let values = null as null | readonly Runtyper.ConstantType["value"][]
+		if(propType.type === "constant"){
+			values = [propType.value]
+		} else if(propType.type === "constant_union"){
+			values = propType.value
+		} else {
+			dflt.push(type)
+			continue
+		}
+
+		for(let value of values){
+			let arr = map.get(value)
+			if(!arr){
+				arr = []
+				map.set(value, arr)
+			}
+			arr.push(type)
+		}
+	}
+
+	if(map.size === 0){
+		return dflt
+	} else {
+		return {
+			propertyName: key,
+			mapping: map,
+			default: dflt
+		}
+	}
+
+}

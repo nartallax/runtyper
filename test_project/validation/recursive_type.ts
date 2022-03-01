@@ -59,7 +59,7 @@ validationTests.push([
 validationTests.push([
 	Runtyper.getType<DivPrinter>(),
 	{printedValue: {text: "nya", child: {src: "nya", child: {src: "nya", isTrue: true}}}},
-	"at path value.printedValue.child (of type object)"
+	"bad value"
 ])
 
 

@@ -15,9 +15,9 @@ export class CodeBuilder {
 	}
 
 	private updateIdent(part: string): string {
-		let lines = part.split("\n")
+		let lines = part.split("\n").map(x => x.trim()).filter(x => !!x)
 		for(let i = 0; i < lines.length; i++){
-			let line = lines[i]!.trim()
+			let line = lines[i]!
 			if(line.startsWith("}")){
 				this.identLevel--
 			}

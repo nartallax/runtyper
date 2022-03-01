@@ -118,6 +118,10 @@ export abstract class FunctionBuilder {
 		}
 		code += `\n//# sourceURL=runtyper_validator_generated_code_${id}`
 
+		// if(code.indexOf("WildMix") > 0){
+		// 	console.log(code)
+		// }
+
 		// eslint-disable-next-line @typescript-eslint/ban-types
 		let outerFunction: Function
 		try {
