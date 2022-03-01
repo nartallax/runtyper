@@ -14,7 +14,6 @@ union/intersection + object with index (tests here)
 
 local goals:
 
-validator builder flag tests (with intersections and unions too)
 discriminated union optimization (through switch)
 support binary classes (buffer, arraybuffer, typed arrays)
 support external types (consider never including class declarations and/or interfaces with function property values in code: such types will never produce a validator, but can easily make js generated code infinitely times larger)

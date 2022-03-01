@@ -1,20 +1,19 @@
 import {Runtyper} from "runtyper/runtyper"
 
 export const simplificationTests = [] as [Runtyper.Type, (Runtyper.SimpleType | string)][]
-export const codeGenerationTests = [] as [Runtyper.Type, string, Partial<Runtyper.ValidatorBuilderOptions & {ensureAbsent: boolean}>?][]
 export const validationTests = [] as [Runtyper.Type, unknown, string | null, Partial<Runtyper.ValidatorBuilderOptions>?][]
+let totalTestsRun = 0
 
 export function main(): void {
 
-	let failedCount = runSimplificationTests() + runCodeGenerationTests() + runValidationTests()
+	let failedCount = runSimplificationTests() + runValidationTests()
 
 	if(failedCount === 0){
-		console.error("Testing successful.")
-		process.exit(0)
+		console.error(`Testing successful, ${totalTestsRun} tests passed.`)
 	} else {
-		console.error("Failed " + failedCount + " tests. Testing failed.")
-		process.exit(failedCount === 0 ? 0 : 1)
+		console.error(`Failed ${failedCount} tests out of ${totalTestsRun}. Testing failed.`)
 	}
+	process.exit(failedCount === 0 ? 0 : 1)
 }
 
 
@@ -22,6 +21,7 @@ export function main(): void {
 function runSimplificationTests(): number {
 	let failedCount = 0
 	for(let [srcType, result] of simplificationTests){
+		totalTestsRun++
 		try {
 			let simplifiedStructure = Runtyper.getSimplifier().simplify(srcType)
 			// console.dir(simplifiedStructure, {depth: null})
@@ -65,42 +65,10 @@ function runSimplificationTests(): number {
 	return failedCount
 }
 
-// TODO: remove them completely, they are not viable anymore
-function runCodeGenerationTests(): number {
-	let failCount = 0
-	// for(let [type, result, mbOptions] of codeGenerationTests){
-	// 	try {
-	// 		let builder = Runtyper.getValidatorBuilder(mbOptions)
-	// 		let code = builder.build(Runtyper.getSimplifier().simplify(type)) + ""
-	// 		let hasFragment = code.indexOf(result) < 0
-	// 		if(hasFragment === !(mbOptions?.ensureAbsent)){
-	// 			console.error("\nCode generation test failed:")
-	// 			console.error("source: " + JSON.stringify(type))
-	// 			console.error("expected: " + result)
-	// 			console.error("got: " + code)
-	// 			failCount++
-	// 		}
-	// 	} catch(e){
-	// 		if(!(e instanceof Error)){
-	// 			throw e
-	// 		}
-	// 		let hasFragment = e.message.indexOf(result) < 0
-	// 		if(hasFragment === !(mbOptions?.ensureAbsent)){
-	// 			console.error("\nCode generation test failed:")
-	// 			console.error("source: " + JSON.stringify(type))
-	// 			console.error("expected: " + result)
-	// 			console.error("got error text: " + e.message)
-	// 			console.error("stack: " + e.stack)
-	// 			failCount++
-	// 		}
-	// 	}
-	// }
-	return failCount
-}
-
 function runValidationTests(): number {
 	let failCount = 0
 	for(let [type, value, expectedResult, mbOptions] of validationTests){
+		totalTestsRun++
 		let validator: ((value: unknown) => unknown) | null = null
 		try {
 			let builder = Runtyper.getValidatorBuilder(mbOptions)
