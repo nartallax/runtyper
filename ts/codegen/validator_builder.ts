@@ -1,6 +1,5 @@
 import {ValidatorFunctionBuilder} from "codegen/validator_function_builder"
 import {Runtyper} from "entrypoint"
-import {StackMap} from "utils/stack_map"
 
 export interface ErrorValidationResult {
 	value: unknown
@@ -23,7 +22,7 @@ export class ValidatorBuilderImpl {
 	constructor(readonly opts: Runtyper.ValidatorBuilderOptions) {}
 
 	readonly rawValidators = new Map<string, RawValidator>()
-	readonly currentlyBuildingValidators = new StackMap<string, ProxyFunctionPair | null>()
+	readonly currentlyBuildingValidators = new Map<string, ProxyFunctionPair | null>()
 	readonly wrappedValidators = new Map<string, WrappedValidator>()
 
 	build<T = unknown>(type: Runtyper.SimpleType): (value: unknown) => value is T {
@@ -76,22 +75,24 @@ export class ValidatorBuilderImpl {
 				let proxy = this.currentlyBuildingValidators.get(type.fullRefName)
 				if(!proxy){
 					proxy = this.makeProxyFunctionPair()
-					this.currentlyBuildingValidators.update(type.fullRefName, proxy)
+					this.currentlyBuildingValidators.set(type.fullRefName, proxy)
 				}
 				return proxy.call as unknown as RawValidator
+			} else {
+				this.currentlyBuildingValidators.set(type.fullRefName, null)
 			}
 		}
 
-		if(type.fullRefName){
-			this.currentlyBuildingValidators.push(type.fullRefName, null)
-		}
 		let result = new ValidatorFunctionBuilder(this).build(type, true)
+
 		if(type.fullRefName){
-			let [, proxy] = this.currentlyBuildingValidators.pop()!
+			let proxy = this.currentlyBuildingValidators.get(type.fullRefName)
+			this.currentlyBuildingValidators.delete(type.fullRefName)
 			if(proxy){
 				proxy.set(result)
 			}
 		}
+
 		return result
 	}
 
