@@ -1,5 +1,5 @@
 import {Point} from "types/simple"
-import {Runtyper} from "runtyper/runtyper"
+import {Runtyper} from "@nartallax/runtyper"
 
 export let pointStructure = Runtyper.getType<Point>()
 export let numberStructure = Runtyper.getType<number>()

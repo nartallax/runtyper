@@ -1,5 +1,5 @@
 import {validationTests} from "test_project_main"
-import {Runtyper} from "runtyper/runtyper"
+import {Runtyper} from "@nartallax/runtyper"
 import {AnswerToEverything, Fraction, MyDogName, MyFalse, MyUndefined, Quality} from "types/constant_types"
 
 validationTests.push([

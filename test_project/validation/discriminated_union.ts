@@ -1,5 +1,5 @@
 import {validationTests} from "test_project_main"
-import {Runtyper} from "runtyper/runtyper"
+import {Runtyper} from "@nartallax/runtyper"
 
 type DiscriminatedUnionA = {type: 1, a: string} | {type: 2, a: number} | {type: 3, a: boolean}
 

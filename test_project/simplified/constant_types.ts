@@ -1,5 +1,5 @@
 import {simplificationTests} from "test_project_main"
-import {Runtyper} from "runtyper/runtyper"
+import {Runtyper} from "@nartallax/runtyper"
 import {Fraction, Goodness, MyDogName, MyFalse} from "types/constant_types"
 
 simplificationTests.push([

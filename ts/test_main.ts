@@ -26,12 +26,13 @@ test("main test", async assert => {
 	await Fs.rm(outDir, {recursive: true, force: true})
 
 	try {
-		await Fs.mkdir("./test_project/node_modules/runtyper", {recursive: true})
+		await Fs.mkdir("./test_project/node_modules/@nartallax/runtyper", {recursive: true})
 	} catch(e){
 		// nothing
 	}
-	await Fs.copyFile("./target/runtyper.d.ts", "./test_project/node_modules/runtyper/runtyper.d.ts")
-	await Fs.copyFile("./target/runtyper.js", "./test_project/node_modules/runtyper/runtyper.js")
+	await Fs.copyFile("./target/runtyper.d.ts", "./test_project/node_modules/@nartallax/runtyper/runtyper.d.ts")
+	await Fs.copyFile("./target/runtyper.js", "./test_project/node_modules/@nartallax/runtyper/runtyper.js")
+	await Fs.copyFile("./package.json", "./test_project/node_modules/@nartallax/runtyper/package.json")
 
 	let context = await Imploder.runFromTsconfig("./test_project/tsconfig.json")
 	if(!context.compiler.lastBuildWasSuccessful){
@@ -49,7 +50,7 @@ test("main test", async assert => {
 		assert(producedJs).equalsTo(ethalonJS)
 	}
 
-	for(let name of ["array", "conditional_types", "constant_types", "destructurizing", "enums", "fields_and_dtos", "infer", "inheritance", "mapped_types_and_indexed_access", "other_module_type_ref", "recursive_type", "simple", "tricky_property_names", "tuples", "typeof", "union_intersection"]){
+	for(let name of ["array", "conditional_types", "constant_types", "destructurizing", "enums", "fields_and_dtos", "infer", "inheritance", "mapped_types_and_indexed_access", "other_module_type_ref", "recursive_type", "simple", "tricky_property_names", "tuples", "typeof", "union_intersection", "external_types"]){
 		await assertEthalonJs(["types", name])
 	}
 

@@ -1,5 +1,5 @@
 import {validationTests} from "test_project_main"
-import {Runtyper} from "runtyper/runtyper"
+import {Runtyper} from "@nartallax/runtyper"
 import {Awoo2, MyMyMy, MyStringNumber} from "types/other_module_type_ref"
 
 validationTests.push([

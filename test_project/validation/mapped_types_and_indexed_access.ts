@@ -1,5 +1,5 @@
 import {validationTests} from "test_project_main"
-import {Runtyper} from "runtyper/runtyper"
+import {Runtyper} from "@nartallax/runtyper"
 import {C, MappedPoint, OptCopiedPoint, PointCopy, PointStupidCopy, PointY, XPoint, XXPoint} from "types/mapped_types_and_indexed_access"
 
 validationTests.push([

@@ -1,5 +1,5 @@
 import {simplificationTests} from "test_project_main"
-import {Runtyper} from "runtyper/runtyper"
+import {Runtyper} from "@nartallax/runtyper"
 import {ConstStringPropName, TrickyProperties} from "types/tricky_property_names"
 
 simplificationTests.push([

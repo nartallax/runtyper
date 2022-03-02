@@ -1,5 +1,5 @@
 import {simplificationTests} from "test_project_main"
-import {Runtyper} from "runtyper/runtyper"
+import {Runtyper} from "@nartallax/runtyper"
 import {NullOrFive, ThisShouldBeNumber} from "types/infer"
 import {ThisShouldBeBoolean, ThisShouldBeBoolean4, ThisShouldBeBoolean5, ThisShouldBeNullOrString, ThisShouldBeStringOrBoolean} from "knowingly_broken/infers_bad"
 

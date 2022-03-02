@@ -1,6 +1,5 @@
 import type * as Tsc from "typescript"
 import {ToolboxTransformer} from "@nartallax/toolbox-transformer"
-import * as Path from "path"
 import {Runtyper} from "entrypoint"
 
 // utility functions the transformer use
@@ -43,27 +42,8 @@ export class RuntyperTricks extends ToolboxTransformer.ToolboxTricks {
 	}
 
 	isInNodeModules(decl: Tsc.Declaration): boolean {
-		let pathParts = decl.getSourceFile().fileName.split(Path.sep)
+		let pathParts = decl.getSourceFile().fileName.split(/[/\\]/)
 		return !!pathParts.find(x => x === "node_modules")
-	}
-
-	getPackageName(decl: Tsc.Declaration): string {
-		let path = decl.getSourceFile().fileName
-		let pathParts = path.split(Path.sep)
-		for(let i = pathParts.length - 2; i >= 0; i--){
-			if(pathParts[i] === "node_modules"){
-				let part = pathParts[i + 1]!
-				if(!part.startsWith("@")){
-					return part
-				}
-
-				if(i === pathParts.length - 2){
-					throw new Error("Cannot deduce NPM package name from file path: " + path + ": last part of path is a namespace, but nothing comes after it.")
-				}
-				return part + "/" + pathParts[i + 2]
-			}
-		}
-		throw new Error("Cannot deduce NPM package name from file path: " + path + ": cannot find node_modules in path (or it is last part of path)")
 	}
 
 	extractVariablesFromDeclaration(el: Tsc.VariableDeclaration): DestructVariable[] {
@@ -149,6 +129,7 @@ export class RuntyperTricks extends ToolboxTransformer.ToolboxTricks {
 	getReferenceToNode(node: Tsc.Node): NodeReferenceByNodes {
 		let sourceFile = node.getSourceFile()
 		let path = this.getPathToNodeUpToLimit(node, parent => parent === sourceFile)
+		// process external modules here maybe?
 		let moduleName = this.modulePathResolver.getCanonicalModuleName(sourceFile.fileName)
 		return {moduleName, nodePath: path}
 	}

@@ -1,5 +1,5 @@
 import {simplificationTests} from "test_project_main"
-import {Runtyper} from "runtyper/runtyper"
+import {Runtyper} from "@nartallax/runtyper"
 import {I_AnyAndConst, I_AnyAndConsts, I_AnyAndType, I_AnyUnknown, I_AnyUnknownNever, I_NeverAndConst, I_NeverAndConsts, I_NeverAndType, I_UnknownAndConst, I_UnknownAndConsts, I_UnknownAndType, ManyMath, MathAndName, MathAndSomethingElseWithDefault, NullableNumber, Primitive, Shapeless, U_AnyAndConst, U_AnyAndConsts, U_AnyAndType, U_AnyUnknownNever, U_NeverAndConst, U_NeverAndConsts, U_NeverAndType, U_UnknownAndConst, U_UnknownAndConsts, U_UnknownAndType, U_UnknownNever, Zero} from "types/union_intersection"
 
 simplificationTests.push([

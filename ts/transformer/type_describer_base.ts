@@ -1,4 +1,5 @@
 import {Runtyper} from "entrypoint"
+import {TransParams} from "transformer/transformer"
 import {RuntyperTricks} from "transformer/tricks"
 import * as Tsc from "typescript"
 
@@ -8,6 +9,7 @@ export abstract class TypeDescriberBase {
 
 	constructor(protected readonly tricks: RuntyperTricks,
 		protected readonly file: Tsc.SourceFile,
+		protected readonly params: TransParams,
 		public currentNode: Tsc.Node | null = null) {
 
 		this.sourceModuleName = tricks.modulePathResolver.getCanonicalModuleName(file.fileName)
@@ -32,7 +34,7 @@ export abstract class TypeDescriberBase {
 	}
 
 	protected maybeNameOfDeclaration(decl: Tsc.Declaration): string | null {
-		if(Tsc.isInterfaceDeclaration(decl) || Tsc.isTypeAliasDeclaration(decl) || Tsc.isClassDeclaration(decl) || Tsc.isIdentifier(decl)){
+		if(Tsc.isInterfaceDeclaration(decl) || Tsc.isTypeAliasDeclaration(decl) || Tsc.isClassDeclaration(decl) || Tsc.isIdentifier(decl) || Tsc.isEnumDeclaration(decl)){
 			return this.nameOfNode(decl)
 		} else {
 			return null
@@ -41,7 +43,9 @@ export abstract class TypeDescriberBase {
 
 	nameOfNode(node: Tsc.Node): string {
 		let ref = this.tricks.getReferenceToNode(node)
-		let moduleName = node.getSourceFile() === this.file ? this.sourceModuleName : ref.moduleName
+		let moduleName = node.getSourceFile() === this.file
+			? this.sourceModuleName
+			: ref.moduleName
 		return this.nameOfModuleAndIdentifiers(moduleName, ref.nodePath)
 	}
 
@@ -50,10 +54,11 @@ export abstract class TypeDescriberBase {
 	}
 
 	protected wrapTypeExtraction<T>(action: () => T): T | Runtyper.BrokenType {
+		Error.stackTraceLimit = 100
 		try {
 			return action()
 		} catch(e){
-			if(e instanceof Error){
+			if(e instanceof Error && !(e instanceof RangeError)){
 				return this.fail(e.stack || e.message)
 			} else {
 				throw e

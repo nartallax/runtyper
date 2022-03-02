@@ -1,4 +1,5 @@
 import {Runtyper} from "entrypoint"
+import {TransParams} from "transformer/transformer"
 import {RuntyperTricks} from "transformer/tricks"
 import {TypeDescriberBase} from "transformer/type_describer_base"
 import {TypeNodeDescriber} from "transformer/type_node_describer"
@@ -11,8 +12,9 @@ export class TypeInferrer extends TypeDescriberBase {
 		private typeNodeDescriber: TypeNodeDescriber,
 		tricks: RuntyperTricks,
 		file: Tsc.SourceFile,
+		params: TransParams,
 		currentNode: Tsc.Node | null) {
-		super(tricks, file, currentNode)
+		super(tricks, file, params, currentNode)
 	}
 
 	inferVariableDeclarationType(decl: Tsc.VariableDeclaration, preferConst: boolean): Runtyper.Type {

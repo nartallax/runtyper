@@ -364,11 +364,11 @@ export class TypeSimplifier {
 				}
 				let genName = type.checkType.name
 				let checkType = this.simplifyInternal(type.checkType, genArgs, ref)
-				let simpleExtendsType = this.simplifyInternal(type.extendsType, genArgs, ref)
+				let templateType = this.simplifyInternal(type.extendsType, genArgs, ref)
 				let sourceInferNames = this.findSourceInfers(type)
-				if(sourceInferNames.length === 0 && simpleExtendsType.type === "constant_union"){
+				if(sourceInferNames.length === 0 && templateType.type === "constant_union"){
 					// simplified check for constant unions
-					let set = new Set(simpleExtendsType.value)
+					let set = new Set(templateType.value)
 					let result = [] as Runtyper.SimpleType[]
 					forEachTerminalTypeInUnion(checkType, subtype => {
 						let branch: Runtyper.Type
@@ -381,24 +381,37 @@ export class TypeSimplifier {
 					})
 					return this.makeUnion(result)
 				}
-				let infers = this.typeExtendsType(checkType, simpleExtendsType, type)
-				if(!infers){
-					let newArgs = {} as Record<string, Runtyper.SimpleType>
-					for(let name of sourceInferNames){
-						newArgs[name] = {type: "never"}
-					}
-					return this.simplifyInternal(type.falseType, {...genArgs, ...newArgs}, ref)
-				} else {
-					let newArgs = {} as Record<string, Runtyper.SimpleType>
-					for(let name of sourceInferNames){
-						let inferredType = infers.get(name)
-						if(!inferredType){
-							this.fail("failed to infer any type for " + name + "; this is not supported: ", type)
+
+				let resultingTypes = [] as Runtyper.SimpleType[]
+				forEachTerminalTypeInUnion(checkType, checkSubtype => {
+					let infers = this.typeExtendsType(checkSubtype, templateType, type)
+					if(!infers){
+						let newArgs = {} as Record<string, Runtyper.SimpleType>
+						for(let name of sourceInferNames){
+							newArgs[name] = {type: "never"}
 						}
-						newArgs[name] = inferredType
+						resultingTypes.push(this.simplifyInternal(type.falseType, {
+							...genArgs,
+							...newArgs,
+							[genName]: checkSubtype
+						}, ref))
+					} else {
+						let newArgs = {} as Record<string, Runtyper.SimpleType>
+						for(let name of sourceInferNames){
+							let inferredType = infers.get(name)
+							if(!inferredType){
+								this.fail("failed to infer any type for " + name + "; this is not supported: ", type)
+							}
+							newArgs[name] = inferredType
+						}
+						resultingTypes.push(this.simplifyInternal(type.trueType, {
+							...genArgs,
+							...newArgs,
+							[genName]: checkSubtype
+						}, ref))
 					}
-					return this.simplifyInternal(type.trueType, {...genArgs, ...newArgs}, ref)
-				}
+				})
+				return this.makeUnion(resultingTypes)
 			}
 		}
 	}
@@ -560,9 +573,9 @@ export class TypeSimplifier {
 		return result
 	}
 
-	private checkUnionExtends(intersection: Runtyper.UnionType<Runtyper.SimpleType>, otherType: Runtyper.SimpleType, isUnionCheckedType: boolean, srcExpr: Runtyper.Type): InferMap | null {
+	private checkUnionExtends(union: Runtyper.UnionType<Runtyper.SimpleType>, otherType: Runtyper.SimpleType, isUnionCheckedType: boolean, srcExpr: Runtyper.Type): InferMap | null {
 		let result: InferMap | null = null
-		for(let subtype of intersection.types){
+		for(let subtype of union.types){
 			let infers = isUnionCheckedType
 				? this.typeExtendsType(subtype, otherType, srcExpr)
 				: this.typeExtendsType(otherType, subtype, srcExpr)

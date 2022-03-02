@@ -6,8 +6,7 @@ import * as Tsc from "typescript"
 
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 export interface TransParams extends Runtyper.TransformerParameters {
-	// litRefPacks: Set<string>
-	// refRefPacks: Set<string>
+	allowedExtPacks: Set<string>
 }
 
 export class Transformer {
@@ -17,13 +16,14 @@ export class Transformer {
 	) {}
 
 	transform(file: Tsc.SourceFile): Tsc.SourceFile {
-		file = this.addTypeStructures(file)
-		file = this.substituteSpecialFunctions(file)
+		let refTypes = new StringNodeableUniqMap<Runtyper.Type>("t")
+		file = this.substituteSpecialFunctions(file, refTypes)
+		file = this.addTypeStructures(file, refTypes)
 		return file
 	}
 
-	private substituteSpecialFunctions(file: Tsc.SourceFile): Tsc.SourceFile {
-		let typeDescriber = new TypeNodeDescriber(this.tricks, file)
+	private substituteSpecialFunctions(file: Tsc.SourceFile, refTypes: StringNodeableUniqMap<Runtyper.Type>): Tsc.SourceFile {
+		let typeDescriber = new TypeNodeDescriber(this.tricks, file, this.params, refTypes)
 
 		let visitor = (node: Tsc.Node): Tsc.Node => {
 			if(Tsc.isCallExpression(node)){
@@ -51,17 +51,17 @@ export class Transformer {
 		return Tsc.visitEachChild(file, visitor, this.tricks.transformContext)
 	}
 
-	private addTypeStructures(file: Tsc.SourceFile): Tsc.SourceFile {
+	private addTypeStructures(file: Tsc.SourceFile, refTypes: StringNodeableUniqMap<Runtyper.Type>): Tsc.SourceFile {
 		try {
-
-			let typeNodeDescriber = new TypeNodeDescriber(this.tricks, file)
 
 			return this.forEachNodeScoped(file,
 				(root, parentScope) => new Scope(
 					root,
 					parentScope,
 					this.tricks,
-					typeNodeDescriber
+					file,
+					this.params,
+					refTypes
 				),
 				(scope, root, parentScope) => {
 					if(Tsc.isSourceFile(root)){
@@ -195,19 +195,21 @@ export class Transformer {
 /** An object that hold information about types in current scope */
 class Scope {
 
-	public refTypes: StringNodeableUniqMap<Runtyper.Type>
 	public valueTypes: StringNodeableUniqMap<Runtyper.Type>
 	public functionsByName: FunctionNameMap = new FunctionNameMap("f")
 	public forceImport = false
+	public readonly describer: TypeNodeDescriber
 
 	constructor(
 		public scopeRoot: Tsc.Node,
 		parentScope: Scope | null,
 		public tricks: RuntyperTricks,
-		public describer: TypeNodeDescriber) {
+		public file: Tsc.SourceFile,
+		public readonly params: TransParams,
+		public readonly refTypes: StringNodeableUniqMap<Runtyper.Type>) {
 
-		this.refTypes = parentScope?.refTypes || new StringNodeableUniqMap<Runtyper.Type>("t")
 		this.valueTypes = parentScope?.valueTypes || new StringNodeableUniqMap<Runtyper.Type>("v")
+		this.describer = new TypeNodeDescriber(this.tricks, this.file, this.params, this.refTypes)
 	}
 
 

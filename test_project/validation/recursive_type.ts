@@ -1,5 +1,5 @@
 import {validationTests} from "test_project_main"
-import {Runtyper} from "runtyper/runtyper"
+import {Runtyper} from "@nartallax/runtyper"
 import {Div4, DivPrinter, LinkChain, TreeNode} from "types/recursive_type"
 
 validationTests.push([

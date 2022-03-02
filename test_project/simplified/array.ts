@@ -1,5 +1,5 @@
 import {simplificationTests} from "test_project_main"
-import {Runtyper} from "runtyper/runtyper"
+import {Runtyper} from "@nartallax/runtyper"
 import {MyArr, MyArr2, MyArr3, MyArr4, MyArr5} from "types/array"
 
 simplificationTests.push([
@@ -19,7 +19,7 @@ simplificationTests.push([
 
 simplificationTests.push([
 	Runtyper.getType<MyArr4>(),
-	"detected broken type in file /types/array when processing export type MyArr4 = ArrayLike<5>: References to most of external types are not supported"
+	{type: "object", properties: {length: {type: "number"}}, refName: "MyArr4", fullRefName: "/types/array:MyArr4", index: {keyType: {type: "number"}, valueType: {type: "constant", value: 5}}}
 ])
 
 simplificationTests.push([

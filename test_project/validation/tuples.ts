@@ -1,5 +1,5 @@
 import {validationTests} from "test_project_main"
-import {Runtyper} from "runtyper/runtyper"
+import {Runtyper} from "@nartallax/runtyper"
 import {Tuple1, Tuple2, Tuple3, Tuple4, Tuple6, TwoTuples} from "types/tuples"
 
 validationTests.push([

@@ -1,5 +1,5 @@
 import {simplificationTests} from "test_project_main"
-import {Runtyper} from "runtyper/runtyper"
+import {Runtyper} from "@nartallax/runtyper"
 import {MixedTypeD, NamedDestrA, NamedDestrX, RenamedTypeC, RestZ, TypeFromArrayDestr1, TypeFromArrayDestr2, TypeFromObjDestr1, TypeFromObjDestr2} from "types/destructurizing"
 
 simplificationTests.push([

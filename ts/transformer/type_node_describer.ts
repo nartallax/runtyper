@@ -1,9 +1,11 @@
 import {Runtyper} from "entrypoint"
 import {isObjectIndexKeyType} from "utils/simple_type_utils"
-import {DestructVariable} from "transformer/tricks"
+import {DestructVariable, RuntyperTricks} from "transformer/tricks"
 import {TypeDescriberBase} from "transformer/type_describer_base"
 import {TypeInferrer} from "transformer/type_inferrer"
 import * as Tsc from "typescript"
+import {TransParams} from "transformer/transformer"
+import {StringNodeableUniqMap} from "transformer/nodeable_uniq_map"
 
 export interface TypedVariable {
 	type: Runtyper.Type
@@ -17,8 +19,16 @@ export interface TypedFunction {
 
 export class TypeNodeDescriber extends TypeDescriberBase {
 
+	constructor(tricks: RuntyperTricks,
+		file: Tsc.SourceFile,
+		params: TransParams,
+		private refTypes: StringNodeableUniqMap<Runtyper.Type>,
+		currentNode: Tsc.Node | null = null) {
+		super(tricks, file, params, currentNode)
+	}
+
 	private makeInferrer(): TypeInferrer {
-		return new TypeInferrer(this, this.tricks, this.file, this.currentNode)
+		return new TypeInferrer(this, this.tricks, this.file, this.params, this.currentNode)
 	}
 
 	describeClass(decl: Tsc.ClassDeclaration): {cls: Runtyper.Class, variables: TypedVariable[], methods: TypedFunction[]} {
@@ -283,6 +293,8 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 			return this.describeMappedType(node)
 		} else if(Tsc.isTypeOperatorNode(node) && node.operator === Tsc.SyntaxKind.KeyOfKeyword){
 			return this.describeKeyofType(node)
+		} else if(Tsc.isTypeOperatorNode(node) && node.operator === Tsc.SyntaxKind.ReadonlyKeyword){
+			return this.describeType(node.type)
 		} else if(Tsc.isTypeQueryNode(node)){
 			return this.describeTypeofType(node)
 		} else if(Tsc.isImportTypeNode(node)){
@@ -548,73 +560,104 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 
 	// this function partially copies describeReferencedDeclarationType
 	// because they do essentially the same, just this functions returns the literal type of declaration and not just reference
-	// private describeExternalDeclarationRecursively(decl: Tsc.Declaration): void {
-	// 	let type: Runtyper.Type | null = null
-	// 	let name: string | null = this.maybeNameOfDeclaration(decl)
-	// 	if(Tsc.isClassDeclaration(decl)){
-	// 		type = this.fail("Class types are not supported: ", decl)
-	// 	} else if(Tsc.isTypeParameterDeclaration(decl)){
-	// 		return // or can I do something good here?
-	// 	} else if(Tsc.isEnumDeclaration(decl)){
-	// 		// TODO
-	// 		this.fail("Enum types are not supported, at least yet: ", decl)
-	// 		return
-	// 	} else if(Tsc.isInterfaceDeclaration(decl)){
-	// 		type = this.describeInterface(decl)
-	// 	} else if(Tsc.isTypeAliasDeclaration(decl)){
-	// 		type = this.describeAlias(decl)
-	// 	}
+	private describeExternalDeclarationRecursively(decl: Tsc.Declaration): Runtyper.BrokenType | null {
+		let type: Runtyper.Type | null = null
+		if(Tsc.isTypeParameterDeclaration(decl)){
+			return null // or can I do something good here?
+		}
 
-	// 	if(type && name){
-	// 		this.typeMap.maybeAdd(name, type)
-	// 		if(type.type !== "broken"){
-	// 			this.findAndRecursivelyDescribeAllReferenceTypesIn(decl)
-	// 		}
-	// 	}
-	// 	this.fail("Can't understand type of declaration: ", decl)
-	// }
+		let name = this.maybeNameOfDeclaration(decl)
+		if(!name){
+			type = this.fail("Cannot find name for declaration: ", decl)
+		} else {
+			if(this.refTypes.has(name)){ // no infinite recursion
+				return null
+			}
 
-	// private findAndRecursivelyDescribeAllReferenceTypesIn(node: Tsc.Node): void {
-	// 	let visit = (node: Tsc.Node) => {
-	// 		let symbol: Tsc.Symbol | undefined
-	// 		if(Tsc.isTypeReferenceNode(node)){
-	// 			symbol = this.tricks.checker.getSymbolAtLocation(node.typeName)
-	// 		} else if(Tsc.isExpressionWithTypeArguments(node)){
-	// 			symbol = this.tricks.checker.getSymbolAtLocation(node.expression)
-	// 		} else {
-	// 			Tsc.visitEachChild(node, visit, this.tricks.transformContext)
-	// 			return node
-	// 		}
-	// 		if(!symbol){
-	// 			this.fail("No symbol for ", node)
-	// 			return node
-	// 		}
-	// 		let decls = symbol.getDeclarations() || []
-	// 		if(decls.length < 0){
-	// 			this.fail("No declarations of ", node)
-	// 			return node
-	// 		}
-	// 		if(decls.length > 1){
-	// 			this.fail("More than one declaration of ", node)
-	// 			return node
-	// 		}
+			// this trick is to get rid of recursion
+			// we add this type as a notification "we are building this type now, no need to build it again"
+			// and later substitute it with real type
+			this.refTypes.add(name, {
+				type: "broken",
+				file: this.file.fileName,
+				node: decl.getText(),
+				message: placeholderBrokenTypeMessage
+			})
+		}
 
-	// 		this.describeExternalDeclarationRecursively(decls[0]!)
-	// 		return node
-	// 	}
+		if(Tsc.isClassDeclaration(decl)){
+			type = this.fail("Class types are not supported: ", decl)
+		} else if(Tsc.isEnumDeclaration(decl)){
+			type = this.describeEnum(decl)
+		} else if(Tsc.isInterfaceDeclaration(decl)){
+			type = this.describeInterface(decl)
+		} else if(Tsc.isTypeAliasDeclaration(decl)){
+			type = this.describeAlias(decl)
+		}
 
-	// 	visit(node)
-	// }
+		if(type && name){
+			let substType = this.refTypes.get(name)
+			if(!substType){
+				throw new Error("No placeholder type! Should never happen.")
+			}
+			if(substType.type === "broken" && substType.message === placeholderBrokenTypeMessage){
+				this.refTypes.addMaybeOverwrite(name, type)
+				if(type.type !== "broken"){
+					let errType = this.findAndRecursivelyDescribeAllReferenceTypesIn(decl)
+					if(errType){
+						// just to notify user of a problem instead of nondescriptive "type not found"
+						this.refTypes.addMaybeOverwrite(name, errType)
+					}
+				}
+			}
+			return type.type === "broken" ? type : null
+		}
+
+		return type?.type === "broken" ? type : this.fail("Can't understand type of declaration: ", decl)
+	}
+
+	private findAndRecursivelyDescribeAllReferenceTypesIn(node: Tsc.Node): Runtyper.BrokenType | null {
+		let error = null as Runtyper.BrokenType | null
+		let visit = (node: Tsc.Node) => {
+			let symbol: Tsc.Symbol | undefined
+			if(Tsc.isTypeReferenceNode(node)){
+				symbol = this.tricks.checker.getSymbolAtLocation(node.typeName)
+			} else if(Tsc.isExpressionWithTypeArguments(node)){
+				symbol = this.tricks.checker.getSymbolAtLocation(node.expression)
+			} else {
+				Tsc.visitEachChild(node, visit, this.tricks.transformContext)
+				return node
+			}
+
+			if(!symbol){
+				error = this.fail("No symbol for ", node)
+			} else {
+				let decls = symbol.getDeclarations() || []
+				if(decls.length < 0){
+					error = this.fail("No declarations of ", node)
+				} else if(decls.length > 1){
+					error = this.fail("More than one declaration of ", node)
+				} else {
+					error = this.describeExternalDeclarationRecursively(decls[0]!)
+				}
+			}
+
+			return node
+		}
+
+		visit(node)
+		return error
+	}
 
 	private processExternalTypeDecls(node: Tsc.NodeWithTypeArguments, decls: Tsc.Declaration[], symbol: Tsc.Symbol): Runtyper.Type | null {
-		let isTypeFromPackage = !!decls.find(decl => this.tricks.isInNodeModules(decl))
-
-		if(!isTypeFromPackage){
+		let decl = decls[0]!
+		let externalRef = this.tricks.modulePathResolver.getExternalPackageNameAndPath(decl.getSourceFile().fileName)
+		if(!externalRef){
 			return null
 		}
 
-		let decl = decls[0]!
-		let packageName = this.tricks.getPackageName(decl)
+		let {packageName} = externalRef
+
 		let name = symbol.getName()
 		if((name === "Array" || name === "ReadonlyArray") && packageName === "typescript"){
 			let valueType = (node.typeArguments || [])[0]
@@ -624,22 +667,16 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 			return {type: "array", valueType: this.describeType(valueType)}
 		}
 
-		// It's just tedious, and I don't see much profit from it right now
-		// maybe later
-		return this.fail("References to most of external types are not supported (yet): ", node)
+		if(decls.length > 1){
+			return this.fail("Multiple declarations not supported: ", node)
+		}
 
-		// if(decls.length > 1){
-		// 	return this.fail("Multiple declarations not supported: ", node)
-		// }
+		if(this.params.allowedExtPacks.has(packageName)){
+			let err = this.describeExternalDeclarationRecursively(decl)
+			return err || this.describeReferencedDeclarationType(node, decl)
+		}
 
-		// if(this.params.litRefPacks.has(packageName)){
-		// 	this.describeExternalDeclarationRecursively(decl)
-		// 	return this.describeReferencedDeclarationType(node, decl)
-		// } else if(this.params.refRefPacks.has(packageName)){
-		// 	return this.describeReferencedDeclarationType(node, decl)
-		// }
-
-		// return this.fail("Library value cannot/won't be converted to type description: ", node)
+		return this.fail("External type from package " + packageName + " was not converted to type description: ", node)
 	}
 
 	private describeKeyofType(node: Tsc.TypeOperatorNode): Runtyper.Type {
@@ -719,3 +756,5 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 		}
 	}
 }
+
+const placeholderBrokenTypeMessage = "This type is a placeholder. It will be substituted later in the type building process. If you see this test as error, something has gone wrong."

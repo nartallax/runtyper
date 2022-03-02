@@ -1,5 +1,5 @@
 import {simplificationTests} from "test_project_main"
-import {Runtyper} from "runtyper/runtyper"
+import {Runtyper} from "@nartallax/runtyper"
 import {Tuple1, Tuple2, Tuple3, Tuple4, Tuple5, TupleVal1, TupleVal2, TupleVal3} from "types/tuples"
 
 simplificationTests.push([

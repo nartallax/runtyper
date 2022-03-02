@@ -1,5 +1,5 @@
 import {simplificationTests} from "test_project_main"
-import {Runtyper} from "runtyper/runtyper"
+import {Runtyper} from "@nartallax/runtyper"
 import {C, constFromMappedTypeFile, MappedPoint, MyRecordCopyA, MyRecordCopyB, MyRecordCopyBB, OptCopiedPoint, PointCopy, PointStupidCopy, PointY, XPoint, XXPoint, ZOfPoint} from "types/mapped_types_and_indexed_access"
 
 

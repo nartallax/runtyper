@@ -1,5 +1,5 @@
 import {simplificationTests} from "test_project_main"
-import {Runtyper} from "runtyper/runtyper"
+import {Runtyper} from "@nartallax/runtyper"
 import {QwertNoEmptyVal, RewqInlineNoEmptyVal, RewqNoEmptyVal, ThisShoultBeNever, XNoNull, YNoUndef, ZConstNoEmptyVal, ZNoEmptyVal} from "values/exclamation_token"
 
 simplificationTests.push([

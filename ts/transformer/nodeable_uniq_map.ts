@@ -11,6 +11,10 @@ export abstract class NodeableUniqMap<K, V> {
 		return tricks.createLiteralOfValue(value)
 	}
 
+	clear(): void {
+		this.map.clear()
+	}
+
 	get size(): number {
 		return this.map.size
 	}
@@ -23,6 +27,10 @@ export abstract class NodeableUniqMap<K, V> {
 
 	get(key: K): V | undefined {
 		return this.map.get(key)
+	}
+
+	has(key: K): boolean {
+		return this.map.has(key)
 	}
 
 	add(key: K, value: V): void {

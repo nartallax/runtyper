@@ -1,5 +1,5 @@
 import {validationTests} from "test_project_main"
-import {Runtyper} from "runtyper/runtyper"
+import {Runtyper} from "@nartallax/runtyper"
 import {IntersectionOfUnions, IntersectionOfUnionsOfIntersections, ManyMath, NotManyMath, NullableNumber, Primitive, UnionOfIntersections, UnionOfIntersectionsOfUnions, Zero} from "types/union_intersection"
 
 validationTests.push([

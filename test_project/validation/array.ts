@@ -1,6 +1,6 @@
 import {validationTests} from "test_project_main"
-import {Runtyper} from "runtyper/runtyper"
-import {MyArr, MyArr2, MyArr3} from "types/array"
+import {Runtyper} from "@nartallax/runtyper"
+import {MyArr, MyArr2, MyArr3, MyArr4} from "types/array"
 
 validationTests.push([
 	Runtyper.getType<MyArr>(),
@@ -99,4 +99,10 @@ validationTests.push([
 	Runtyper.getType<MyArr3>(),
 	[null, false, null],
 	"bad value at path value[1] (of type boolean)"
+])
+
+validationTests.push([
+	Runtyper.getType<MyArr4>(),
+	[5, 6, 7],
+	"index key of object is not string"
 ])

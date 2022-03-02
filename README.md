@@ -15,12 +15,14 @@ union/intersection + object with index (tests here)
 local goals:
 
 support binary classes (buffer, arraybuffer, typed arrays)
-support external types (consider never including class declarations and/or interfaces with function property values in code: such types will never produce a validator, but can easily make js generated code infinitely times larger)
 can add validators to aliases of primitive types
+can add validators to external types
+test for gettype of external type
 
 test for optional function params
 test for function params with defaults
 test for function params with spread
+test for functions that expect external types, including those mixed into other types like interface fields or generic params
 generic parameters of functions? what types will be returned? what validator will be built?
 
 check d.ts for type leaks

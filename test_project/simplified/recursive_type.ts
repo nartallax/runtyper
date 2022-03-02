@@ -1,5 +1,5 @@
 import {simplificationTests} from "test_project_main"
-import {Runtyper} from "runtyper/runtyper"
+import {Runtyper} from "@nartallax/runtyper"
 import {Div3, Div4, DivPrinter, Img, LinkChain, TreeNode} from "types/recursive_type"
 
 // see `console.dir` of output to check

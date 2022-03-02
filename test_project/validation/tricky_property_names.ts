@@ -1,6 +1,6 @@
 /* eslint-disable quote-props */
 import {validationTests} from "test_project_main"
-import {Runtyper} from "runtyper/runtyper"
+import {Runtyper} from "@nartallax/runtyper"
 import {TrickyProperties} from "types/tricky_property_names"
 
 validationTests.push([

@@ -1,4 +1,4 @@
-import {Runtyper} from "runtyper/runtyper"
+import {Runtyper} from "@nartallax/runtyper"
 
 export const simplificationTests = [] as [Runtyper.Type, (Runtyper.SimpleType | string)][]
 export const validationTests = [] as [Runtyper.Type, unknown, string | null, Partial<Runtyper.ValidatorBuilderOptions>?][]
