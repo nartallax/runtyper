@@ -268,7 +268,7 @@ export class TransformationScope {
 	addImportedValueToFunctions(name: string, node: Tsc.Node): void {
 		let moduleName = this.tricks.getModuleNameForImport(node)
 		if(!moduleName){
-			this.addValueToFunctions(name, node)
+			this.addValueToFunctions(name, node, undefined, true)
 			return
 		}
 
@@ -280,17 +280,21 @@ export class TransformationScope {
 			this.imports.set(moduleName, moduleIdentifier)
 		}
 
-		this.addValueToFunctions(name, node, moduleIdentifier)
+		this.addValueToFunctions(name, node, moduleIdentifier, true)
 	}
 
-	addValueToFunctions(name: string, node: Tsc.Node, prefix?: Tsc.Identifier): void {
+	addValueToFunctions(name: string, node: Tsc.Node, prefix?: Tsc.Identifier, canBeDuplicate = false): void {
 		let exported = this.isExportedFromScope(node)
 		let limiter = exported ? this.scopeRoot.parent?.parent : this.scopeRoot
 		let path = this.tricks.getPathToNodeUpToLimit(node, x => x === limiter)
 		if(prefix){
 			path = [prefix, ...path]
 		}
-		this.functionsByName.add(name, path)
+		if(canBeDuplicate){
+			this.functionsByName.maybeAdd(name, path)
+		} else {
+			this.functionsByName.add(name, path)
+		}
 	}
 
 	addVariables(variables: TypedVariable[]): void {

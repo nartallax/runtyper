@@ -36,7 +36,7 @@ export class TypeSimplifier {
 		}
 	}
 
-	private makeRefName(reference: Runtyper.TypeReferenceType, target: {typeParameters?: Runtyper.TypeParameter[]}, newGenArgs: GenArgs, full: boolean): string {
+	private makeRefName(reference: Runtyper.ReferenceType, target: {typeParameters?: Runtyper.TypeParameter[]}, newGenArgs: GenArgs, full: boolean): string {
 		let refName: string
 		if(full){
 			refName = reference.name
@@ -68,7 +68,7 @@ export class TypeSimplifier {
 		return refName
 	}
 
-	private cachedSimplifyReference(reference: Runtyper.TypeReferenceType, genArgs: GenArgs, throwOnCircular: boolean): Runtyper.SimpleType {
+	private cachedSimplifyReference(reference: Runtyper.ReferenceType, genArgs: GenArgs, throwOnCircular: boolean): Runtyper.SimpleType {
 		let targetType = refTypes.get(reference.name)
 		if(!targetType){
 			this.fail("cannot find referenced type by name: ", reference)
@@ -145,8 +145,14 @@ export class TypeSimplifier {
 			}
 			case "value_reference":{
 				let valType = valueTypes.get(type.name)
-				if(!valType){
-					this.fail("type refers to value which is nowhere to be found: ", type)
+				if(!valType || valType.type === "class"){
+					// maybe it's external class?
+					if(functionsByName.has(type.name)){
+						return this.makeInstanceType(type, ref)
+					}
+					if(!valType){
+						this.fail("type refers to value which is nowhere to be found: ", type)
+					}
 				}
 				return this.simplifyInternal(valType, genArgs)
 			}
@@ -166,20 +172,7 @@ export class TypeSimplifier {
 			}
 			case "function": this.fail("cannot simplify function type: ", type)
 			// eslint-disable-next-line no-fallthrough
-			case "class":{
-				if(!ref){
-					this.fail("cannot simplify class type: no ref info: ", type)
-				}
-				let cls = functionsByName.get(ref.fullRefName)
-				if(!cls || typeof(cls) !== "function"){
-					this.fail("cannot simplify class type: no function is stored on name " + ref.fullRefName + " : ", type)
-				}
-				return {
-					type: "instance",
-					cls: cls as unknown as {new(...args: unknown[]): unknown},
-					...ref
-				}
-			}
+			case "class": this.fail("cannot simplify class type: ", type)
 			// eslint-disable-next-line no-fallthrough
 			case "intersection": return this.simplifyIntersection(type, genArgs)
 			case "union":{
@@ -429,6 +422,19 @@ export class TypeSimplifier {
 		}
 	}
 
+	private makeInstanceType(refType: Runtyper.ReferenceType, ref: RefInfo | null): Runtyper.ClassInstanceType {
+		if(refType.typeArguments && refType.typeArguments.length > 0){
+			this.fail("cannot check instance type if class has generic arguments: generic arguments are generally uncheckable at runtime: ", refType)
+		}
+
+		let cls = functionsByName.get(refType.name)
+		if(!cls){
+			this.fail("cannot create `instance` simple type: no class is registered for the name: ", refType)
+		}
+
+		return {type: "instance", cls, ...(ref || {})}
+	}
+
 	private fail(msg: string, type?: Runtyper.Type | Runtyper.SimpleType): never {
 		if(type){
 			msg += JSON.stringify(type)
@@ -494,7 +500,7 @@ export class TypeSimplifier {
 	}
 
 	/** Create a new set of generic arguments for a set of type parameters */
-	private makeNewGenericArgs(reference: Runtyper.TypeReferenceType, targetType: {typeParameters?: Runtyper.TypeParameter[]}, oldGenericArgs: GenArgs): GenArgs {
+	private makeNewGenericArgs(reference: Runtyper.ReferenceType, targetType: {typeParameters?: Runtyper.TypeParameter[]}, oldGenericArgs: GenArgs): GenArgs {
 		let simple = {} as Record<string, Runtyper.SimpleType>
 		if(targetType.typeParameters){
 			for(let i = 0; i < targetType.typeParameters.length; i++){

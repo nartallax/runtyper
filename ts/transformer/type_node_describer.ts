@@ -540,15 +540,6 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 		}
 
 		if(Tsc.isImportSpecifier(decl)){
-			// let importDescr = this.describeImportSpecifierSource(decl)
-			// if(typeof(importDescr) !== "string"){
-			// 	return importDescr
-			// }
-			// return {
-			// 	type: "type_reference",
-			// 	name: importDescr,
-			// 	...(typeArguments.length > 0 ? {typeArguments} : {})
-			// }
 			return this.describeImportSpecifierSource(decl, typeArgs)
 		}
 
@@ -570,9 +561,7 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 		}
 
 		let moduleFilePath = this.tricks.moduleFilePath(modSpec.text, this.file)
-		// let fullModName = this.tricks.modulePathResolver.getCanonicalModuleName(moduleFilePath)
 		let origName = importDecl.propertyName || importDecl.name
-		// let fullName = this.nameOfModuleAndIdentifiers(fullModName, [origName])
 
 		let decl = this.tricks.findImportedDeclaration(origName.text, modSpec.text, this.file)
 		let ref = this.describeReferencedDeclarationType(decl, typeArgs)
@@ -582,13 +571,6 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 		}
 
 		return ref
-
-		// if(ambientSrcFile && this.tricks.isFileInNodeModules(ambientSrcFile)){
-		// 	this.scope.addValueExpressionToFunctions(fullName, importDecl.name)
-		// }
-		// return fullName
-		// let origName = importDecl.propertyName || importDecl.name
-		// return this.nameOfModuleAndIdentifiers(fullModName, [origName])
 	}
 
 	// this function partially copies describeReferencedDeclarationType

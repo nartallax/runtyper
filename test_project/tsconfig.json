@@ -28,8 +28,9 @@
                 "transform": "../target/runtyper.js", 
                 "type":"program",
                 "includeExternalTypesFrom": [
-                    "@nartallax/runtyper",
+                    "typescript",
                     "@types/node",
+                    "@nartallax/runtyper",
                     "@nartallax/clamsensor"
                 ]
             }

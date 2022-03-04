@@ -18,8 +18,7 @@ export namespace Runtyper {
 		moduleName: string
 		/** An identifier that will be used in generated code to refer to this module when imported */
 		moduleIdentifier: string
-		/** A set of npm package names. If your code references type from one of these packages, copy of the type structure will be included in place where it is referenced.
-		 * This list always includes "typescript", as you kinda always using it (all of these Omit, Record and so on) */
+		/** A set of npm package names. If your code references type from one of these packages, copy of the type structure or reference to class will be included in file where it is referenced. */
 		includeExternalTypesFrom: string[]
 	}
 
@@ -170,8 +169,7 @@ export namespace Runtyper {
 	| ConstantType
 	| ConstantUnionType
 	| NonNullExpressionType
-	| TypeReferenceType
-	| ValueReferenceType
+	| ReferenceType
 	| CallResultReferenceType
 	| ArrayType
 	| TupleType
@@ -181,7 +179,7 @@ export namespace Runtyper {
 	| MappedType
 	| IndexAccessType
 	| ConditionalType
-	| Runtyper.Function
+	| Runtyper.FunctionDeclaration
 	| Runtyper.Class
 	| InterfaceDeclaration
 	| AliasDeclaration
@@ -242,7 +240,7 @@ export namespace Runtyper {
 		readonly access: AccessLevel
 	}
 
-	export interface Function {
+	export interface FunctionDeclaration {
 		readonly type: "function"
 		readonly signatures: readonly CallSignature[]
 	}
@@ -299,22 +297,16 @@ export namespace Runtyper {
 
 	/** A reference for type that is not placed literally in the code, but instead placed as a name, definition of which resides somewhere else.
 	 * This type should go away after call to finalize() */
-	export interface TypeReferenceType {
-		readonly type: "type_reference"
+	export interface ReferenceType {
+		readonly type: "type_reference" | "value_reference"
 		readonly name: string
-		/** What types are passed as generic arguments to referenced type */
+		/** What types are passed as generic arguments to referenced type
+		 * In case of value reference, it may be arguments passed to class type parameters */
 		readonly typeArguments?: (Type | InferType)[]
 	}
 
 	export interface InferType {
 		readonly type: "infer"
-		readonly name: string
-	}
-
-	/** A reference to type of some value.
-	 * For example, typeof x (where x is variable) can create such reference. */
-	export interface ValueReferenceType {
-		readonly type: "value_reference"
 		readonly name: string
 	}
 
@@ -438,7 +430,8 @@ export namespace Runtyper {
 
 	export interface ClassInstanceType {
 		readonly type: "instance"
-		readonly cls: {new(...args: unknown[]): unknown}
+		// eslint-disable-next-line @typescript-eslint/ban-types
+		readonly cls: Function
 	}
 
 	/** This is one way of reporting errors from transformer
@@ -464,7 +457,6 @@ export default ToolboxTransformer.makeImplodableTransformer<Runtyper.Transformer
 		includeExternalTypesFrom: [],
 		...opts.params
 	}
-	params.includeExternalTypesFrom.push("typescript")
 
 	let transParams: TransParams = {
 		...params,
