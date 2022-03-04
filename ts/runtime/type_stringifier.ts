@@ -72,6 +72,7 @@ export function simpleTypeToString(type: Runtyper.SimpleType, opts?: Partial<Run
 		}
 		case "union": return "(" + type.types.map(x => simpleTypeToString(x, opts)).join(" | ") + ")"
 		case "intersection": return "(" + type.types.map(x => simpleTypeToString(x, opts)).join(" & ") + ")"
+		case "instance": return type.cls.name || "<anon class>"
 	}
 
 }

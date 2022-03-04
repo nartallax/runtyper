@@ -4,8 +4,7 @@ import {DestructVariable, RuntyperTricks} from "transformer/tricks"
 import {TypeDescriberBase} from "transformer/type_describer_base"
 import {TypeInferrer} from "transformer/type_inferrer"
 import * as Tsc from "typescript"
-import {TransParams} from "transformer/transformer"
-import {StringNodeableUniqMap} from "transformer/nodeable_uniq_map"
+import {TransformationScope, TransParams} from "transformer/transformer"
 
 export interface TypedVariable {
 	type: Runtyper.Type
@@ -22,7 +21,7 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 	constructor(tricks: RuntyperTricks,
 		file: Tsc.SourceFile,
 		params: TransParams,
-		private refTypes: StringNodeableUniqMap<Runtyper.Type>,
+		private readonly scope: TransformationScope,
 		currentNode: Tsc.Node | null = null) {
 		super(tricks, file, params, currentNode)
 	}
@@ -41,9 +40,9 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 		decl.members.forEach(member => {
 			if(Tsc.isPropertyDeclaration(member)){
 				let typeNode = member.type
-				let type = !typeNode
-					? this.fail("Class property has no explicit type: ", member)
-					: this.describeType(typeNode)
+				let type = typeNode
+					? this.describeType(typeNode)
+					: this.makeInferrer().inferVariableDeclarationType(member, this.tricks.isNodeReadonly(member))
 
 				if(this.tricks.isNodeStatic(member)){
 					let name = this.nameOfNode(member)
@@ -315,6 +314,7 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 		let names = this.tricks.entityNameToNameArray(node.qualifier)
 		let argType = node.argument
 		let moduleName: string
+		// TODO: test for external and ambient modules here?
 		if(Tsc.isLiteralTypeNode(argType) && Tsc.isStringLiteral(argType.literal)){
 			let pathToModule = argType.literal.text
 			moduleName = this.tricks.modulePathResolver.getCanonicalModuleName(pathToModule)
@@ -504,10 +504,10 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 			return this.fail("Multiple declarations are not supported: ", node)
 		}
 
-		return this.describeReferencedDeclarationType(node, decls[0]!)
+		return this.describeReferencedDeclarationType(decls[0]!, node.typeArguments || [])
 	}
 
-	private describeReferencedDeclarationType(reference: Tsc.NodeWithTypeArguments, decl: Tsc.Declaration): Runtyper.Type {
+	private describeReferencedDeclarationType(decl: Tsc.Node, typeArgs: readonly Tsc.TypeNode[]): Runtyper.Type {
 		if(Tsc.isTypeParameterDeclaration(decl)){
 			return {type: "generic_parameter", name: decl.name.text}
 		}
@@ -516,14 +516,14 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 			return {type: "type_reference", name: this.nameOfNode(decl.name)}
 		}
 
-		let typeArguments = (reference.typeArguments || []).map(typeArg => {
+		let typeArguments = typeArgs.map(typeArg => {
 			if(Tsc.isInferTypeNode(typeArg)){
 				return {type: "infer", name: typeArg.typeParameter.name.text} as Runtyper.InferType
 			} else {
 				return this.describeType(typeArg)
 			}
 		})
-		if(Tsc.isInterfaceDeclaration(decl) || Tsc.isTypeAliasDeclaration(decl) || Tsc.isClassDeclaration(decl)){
+		if(Tsc.isInterfaceDeclaration(decl) || Tsc.isTypeAliasDeclaration(decl)){
 			return {
 				type: "type_reference",
 				name: this.nameOfNode(decl),
@@ -531,15 +531,31 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 			}
 		}
 
-		if(Tsc.isImportSpecifier(decl)){
-			let importDescr = this.describeImportSpecifierSource(decl)
-			if(typeof(importDescr) !== "string"){
-				return importDescr
-			}
+		if(Tsc.isClassDeclaration(decl)){
 			return {
-				type: "type_reference",
-				name: importDescr,
+				type: "value_reference",
+				name: this.nameOfNode(decl),
 				...(typeArguments.length > 0 ? {typeArguments} : {})
+			}
+		}
+
+		if(Tsc.isImportSpecifier(decl)){
+			// let importDescr = this.describeImportSpecifierSource(decl)
+			// if(typeof(importDescr) !== "string"){
+			// 	return importDescr
+			// }
+			// return {
+			// 	type: "type_reference",
+			// 	name: importDescr,
+			// 	...(typeArguments.length > 0 ? {typeArguments} : {})
+			// }
+			return this.describeImportSpecifierSource(decl, typeArgs)
+		}
+
+		if(Tsc.isVariableDeclaration(decl)){
+			return {
+				type: "value_reference",
+				name: this.nameOfNode(decl)
 			}
 		}
 
@@ -547,46 +563,72 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 	}
 
 
-	describeImportSpecifierSource(decl: Tsc.ImportSpecifier): string | Runtyper.BrokenType {
-		let modSpec = decl.parent.parent.parent.moduleSpecifier
+	describeImportSpecifierSource(importDecl: Tsc.ImportSpecifier, typeArgs: readonly Tsc.TypeNode[]): Runtyper.Type {
+		let modSpec = importDecl.parent.parent.parent.moduleSpecifier
 		if(!Tsc.isStringLiteral(modSpec)){
 			return this.fail("Module specifier is not string literal: ", modSpec)
 		}
-		let rawModName = modSpec.text
-		let fullModName = this.tricks.modulePathResolver.resolveModuleDesignator(rawModName, this.file.fileName)
-		let origName = decl.propertyName || decl.name
-		return this.nameOfModuleAndIdentifiers(fullModName, [origName])
+
+		let moduleFilePath = this.tricks.moduleFilePath(modSpec.text, this.file)
+		// let fullModName = this.tricks.modulePathResolver.getCanonicalModuleName(moduleFilePath)
+		let origName = importDecl.propertyName || importDecl.name
+		// let fullName = this.nameOfModuleAndIdentifiers(fullModName, [origName])
+
+		let decl = this.tricks.findImportedDeclaration(origName.text, modSpec.text, this.file)
+		let ref = this.describeReferencedDeclarationType(decl, typeArgs)
+
+		if(this.tricks.isFileInNodeModules(moduleFilePath)){
+			this.describeExternalDeclarationRecursively(decl)
+		}
+
+		return ref
+
+		// if(ambientSrcFile && this.tricks.isFileInNodeModules(ambientSrcFile)){
+		// 	this.scope.addValueExpressionToFunctions(fullName, importDecl.name)
+		// }
+		// return fullName
+		// let origName = importDecl.propertyName || importDecl.name
+		// return this.nameOfModuleAndIdentifiers(fullModName, [origName])
 	}
 
 	// this function partially copies describeReferencedDeclarationType
 	// because they do essentially the same, just this functions returns the literal type of declaration and not just reference
-	private describeExternalDeclarationRecursively(decl: Tsc.Declaration): Runtyper.BrokenType | null {
+	private describeExternalDeclarationRecursively(decl: Tsc.Node): Runtyper.BrokenType | null {
 		let type: Runtyper.Type | null = null
 		if(Tsc.isTypeParameterDeclaration(decl)){
 			return null // or can I do something good here?
 		}
 
-		let name = this.maybeNameOfDeclaration(decl)
+		let isValueDecl = Tsc.isClassDeclaration(decl) || Tsc.isVariableDeclaration(decl)
+
+		// we won't support destructurization in external declarations, at least for now
+		let nameNodeStart = Tsc.isVariableDeclaration(decl) && Tsc.isIdentifier(decl.name) ? decl.name : decl
+		let name = this.maybeNameOfDeclaration(nameNodeStart)
 		if(!name){
 			type = this.fail("Cannot find name for declaration: ", decl)
 		} else {
-			if(this.refTypes.has(name)){ // no infinite recursion
+			if(this.scope.refTypes.has(name)){ // no infinite recursion
 				return null
 			}
 
-			// this trick is to get rid of recursion
+			// this trick is to get rid of infinite recursion
 			// we add this type as a notification "we are building this type now, no need to build it again"
 			// and later substitute it with real type
-			this.refTypes.add(name, {
-				type: "broken",
-				file: this.file.fileName,
-				node: decl.getText(),
-				message: placeholderBrokenTypeMessage
-			})
+			if(!isValueDecl){
+				this.scope.refTypes.add(name, {
+					type: "broken",
+					file: this.file.fileName,
+					node: decl.getText(),
+					message: placeholderBrokenTypeMessage
+				})
+			}
 		}
 
-		if(Tsc.isClassDeclaration(decl)){
-			type = this.fail("Class types are not supported: ", decl)
+		if(isValueDecl){
+			if(name){
+				this.scope.addImportedValueToFunctions(name, decl)
+			}
+			return type?.type === "broken" ? type : null
 		} else if(Tsc.isEnumDeclaration(decl)){
 			type = this.describeEnum(decl)
 		} else if(Tsc.isInterfaceDeclaration(decl)){
@@ -596,17 +638,17 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 		}
 
 		if(type && name){
-			let substType = this.refTypes.get(name)
+			let substType = this.scope.refTypes.get(name)
 			if(!substType){
 				throw new Error("No placeholder type! Should never happen.")
 			}
 			if(substType.type === "broken" && substType.message === placeholderBrokenTypeMessage){
-				this.refTypes.addMaybeOverwrite(name, type)
+				this.scope.refTypes.addMaybeOverwrite(name, type)
 				if(type.type !== "broken"){
 					let errType = this.findAndRecursivelyDescribeAllReferenceTypesIn(decl)
 					if(errType){
 						// just to notify user of a problem instead of nondescriptive "type not found"
-						this.refTypes.addMaybeOverwrite(name, errType)
+						this.scope.refTypes.addMaybeOverwrite(name, errType)
 					}
 				}
 			}
@@ -667,13 +709,16 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 			return {type: "array", valueType: this.describeType(valueType)}
 		}
 
-		if(decls.length > 1){
+		let valueDecl = symbol.valueDeclaration
+		if(valueDecl){
+			decl = valueDecl
+		} else if(decls.length > 1){
 			return this.fail("Multiple declarations not supported: ", node)
 		}
 
 		if(this.params.allowedExtPacks.has(packageName)){
 			let err = this.describeExternalDeclarationRecursively(decl)
-			return err || this.describeReferencedDeclarationType(node, decl)
+			return err || this.describeReferencedDeclarationType(decl, node.typeArguments || [])
 		}
 
 		return this.fail("External type from package " + packageName + " was not converted to type description: ", node)
@@ -731,7 +776,7 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 		} else if(Tsc.isFunctionDeclaration(decl)){
 			name = this.nameOfNode(this.tricks.functionDeclName(decl))
 		} else if(Tsc.isImportSpecifier(decl)){
-			let src = this.describeImportSpecifierSource(decl)
+			let src = this.describeImportSpecifierSource(decl, [])
 			if(typeof(src) !== "string"){
 				return src
 			}
@@ -757,4 +802,4 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 	}
 }
 
-const placeholderBrokenTypeMessage = "This type is a placeholder. It will be substituted later in the type building process. If you see this test as error, something has gone wrong."
+const placeholderBrokenTypeMessage = "This type is a placeholder. It will be substituted later in the type building process. If you see this text as error, something has gone wrong."

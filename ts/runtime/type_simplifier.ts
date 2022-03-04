@@ -1,5 +1,5 @@
 import {Runtyper} from "entrypoint"
-import {refTypes, valueTypes} from "runtime/runtime"
+import {functionsByName, refTypes, valueTypes} from "runtime/runtime"
 import {deepEquals, RoRecord} from "utils/utils"
 import {copyTypeRefs, forEachTerminalTypeInUnion, isObjectIndexKeyType, makeIntersection, makeUnion, removeConstantFromType, removeTypesFromUnion} from "utils/simple_type_utils"
 import {getInferredUnknownName, makeInferredUnknown} from "inferred_unknown"
@@ -166,7 +166,20 @@ export class TypeSimplifier {
 			}
 			case "function": this.fail("cannot simplify function type: ", type)
 			// eslint-disable-next-line no-fallthrough
-			case "class": this.fail("cannot simplify class type: ", type)
+			case "class":{
+				if(!ref){
+					this.fail("cannot simplify class type: no ref info: ", type)
+				}
+				let cls = functionsByName.get(ref.fullRefName)
+				if(!cls || typeof(cls) !== "function"){
+					this.fail("cannot simplify class type: no function is stored on name " + ref.fullRefName + " : ", type)
+				}
+				return {
+					type: "instance",
+					cls: cls as unknown as {new(...args: unknown[]): unknown},
+					...ref
+				}
+			}
 			// eslint-disable-next-line no-fallthrough
 			case "intersection": return this.simplifyIntersection(type, genArgs)
 			case "union":{
@@ -416,7 +429,7 @@ export class TypeSimplifier {
 		}
 	}
 
-	private fail(msg: string, type?: Runtyper.Type): never {
+	private fail(msg: string, type?: Runtyper.Type | Runtyper.SimpleType): never {
 		if(type){
 			msg += JSON.stringify(type)
 		}
@@ -594,6 +607,10 @@ export class TypeSimplifier {
 	}
 
 	private typeExtendsType(checked: Runtyper.SimpleType, template: Runtyper.SimpleType, srcExpr: Runtyper.Type): InferMap | null {
+		if(checked.type === "instance" || template.type === "instance"){
+			// or can I?
+			this.fail("cannot check `extends` conditional type expression for class instances: ", srcExpr)
+		}
 		let inferringName = getInferredUnknownName(template)
 		if(inferringName){
 			return new Map([[inferringName, checked]])
@@ -798,6 +815,7 @@ class FinalSimplifier {
 			case "number":
 			case "boolean":
 			case "constant":
+			case "instance":
 			case "constant_union": return type
 			case "object":{
 				let result: MutableObjectType = makeFreshMutableObject(type)

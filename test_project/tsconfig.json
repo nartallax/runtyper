@@ -29,7 +29,8 @@
                 "type":"program",
                 "includeExternalTypesFrom": [
                     "@nartallax/runtyper",
-                    "@types/node"
+                    "@types/node",
+                    "@nartallax/clamsensor"
                 ]
             }
         ],

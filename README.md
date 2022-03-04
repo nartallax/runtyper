@@ -4,7 +4,7 @@ A library that stores type information in code for runtime to grab.
 Mainly intended for validation. Other uses are possible, but not really kept in mind.  
 
 TBD:
-POSSIBLE CAVEATS (inferrence, code bloat, many things not supported because of too complex behaviour)
+POSSIBLE CAVEATS (inferrence, code bloat (with external modules), many things not supported because of too complex behaviour, complicated imports)
 why types inferred the way they are
 module pruning
 optional === undefined
@@ -15,6 +15,10 @@ union/intersection + object with index (tests here)
 local goals:
 
 support binary classes (buffer, arraybuffer, typed arrays)
+test for check of imported classes (external included)
+test for re-imported external types/values (with and without namespace, from ordinary and ambient modules!)
+test for imported external types (with and without namespace, from ordinary and ambient modules!)
+test import *
 can add validators to aliases of primitive types
 can add validators to external types
 test for gettype of external type

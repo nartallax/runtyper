@@ -33,7 +33,7 @@ export abstract class TypeDescriberBase {
 		}
 	}
 
-	protected maybeNameOfDeclaration(decl: Tsc.Declaration): string | null {
+	protected maybeNameOfDeclaration(decl: Tsc.Node): string | null {
 		if(Tsc.isInterfaceDeclaration(decl) || Tsc.isTypeAliasDeclaration(decl) || Tsc.isClassDeclaration(decl) || Tsc.isIdentifier(decl) || Tsc.isEnumDeclaration(decl)){
 			return this.nameOfNode(decl)
 		} else {
@@ -54,12 +54,12 @@ export abstract class TypeDescriberBase {
 	}
 
 	protected wrapTypeExtraction<T>(action: () => T): T | Runtyper.BrokenType {
-		Error.stackTraceLimit = 100
 		try {
 			return action()
 		} catch(e){
 			if(e instanceof Error && !(e instanceof RangeError)){
-				return this.fail(e.stack || e.message)
+				// return this.fail(e.stack || e.message)
+				return this.fail(e.message)
 			} else {
 				throw e
 			}

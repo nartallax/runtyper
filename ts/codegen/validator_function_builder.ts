@@ -168,12 +168,19 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 				let constrVal = this.addParameter("allowed_values", set)
 				return this.conditionToExpression(valueCode => `!${constrVal.name}.has(${valueCode})`)
 			}
+			case "instance":{
+				if(this.manager.opts.onClassInstance === "throw_on_build"){
+					throw new Error("Failed to build validator: checking of class instances is disabled; class is " + type.fullRefName + ", " + type.cls)
+				}
+				let name = !type.refName || type.refName.length > 50 ? "cnstructor" : type.refName
+				let param = this.addParameter("cls_" + name, type.cls)
+				return this.conditionToExpression(valueCode => `!(${valueCode} instanceof ${param.name})`)
+			}
 			case "intersection": return this.buildIntersectionCheckingCode(type)
 			case "union": return this.buildUnionCheckingCode(type)
 			case "array": return this.buildArrayCheckingCode(type)
 			case "object": return this.buildObjectCheckingCode(type)
 			case "tuple": return this.buildTupleCheckingCode(type)
-
 		}
 	}
 

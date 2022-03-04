@@ -1,6 +1,7 @@
 import type * as Tsc from "typescript"
 import {ToolboxTransformer} from "@nartallax/toolbox-transformer"
 import {Runtyper} from "entrypoint"
+import {AmbientModuleCache} from "transformer/ambient_module_cache"
 
 // utility functions the transformer use
 // later I'll reloc most of them into tricks in toolbox
@@ -18,9 +19,9 @@ export interface NodeReferenceByNodes {
 }
 
 export class RuntyperTricks extends ToolboxTransformer.ToolboxTricks {
-	constructor(toolboxContext: ToolboxTransformer.TransformerProjectContext, transformContext: Tsc.TransformationContext, tsc: typeof Tsc) {
-		super(toolboxContext, transformContext, tsc)
 
+	constructor(toolboxContext: ToolboxTransformer.TransformerProjectContext, transformContext: Tsc.TransformationContext, tsc: typeof Tsc, readonly ambientModules: AmbientModuleCache) {
+		super(toolboxContext, transformContext, tsc)
 	}
 
 	propertyNameToString(name: Tsc.PropertyName): string | null {
@@ -41,8 +42,12 @@ export class RuntyperTricks extends ToolboxTransformer.ToolboxTricks {
 		}
 	}
 
-	isInNodeModules(decl: Tsc.Declaration): boolean {
-		let pathParts = decl.getSourceFile().fileName.split(/[/\\]/)
+	isNodeInNodeModules(decl: Tsc.Node): boolean {
+		return this.isFileInNodeModules(decl.getSourceFile().fileName)
+	}
+
+	isFileInNodeModules(file: string): boolean {
+		let pathParts = file.split(/[/\\]/)
 		return !!pathParts.find(x => x === "node_modules")
 	}
 
@@ -145,7 +150,15 @@ export class RuntyperTricks extends ToolboxTransformer.ToolboxTricks {
 					path.pop()
 					path.push(node.name)
 				}
-			} else if(this.tsc.isModuleDeclaration(node) || this.tsc.isInterfaceDeclaration(node) || this.tsc.isTypeAliasDeclaration(node)){
+			} else if(this.tsc.isModuleDeclaration(node)){
+				if(node.flags & this.tsc.NodeFlags.GlobalAugmentation){
+					break // the node we describing is in global scope, no reason to go further
+				}
+				if(this.tsc.isStringLiteral(node.name)){
+					break // string literal module name = ambient module declaration; it's like toplevel wrapper
+				}
+				path.push(node.name)
+			} else if(this.tsc.isInterfaceDeclaration(node) || this.tsc.isTypeAliasDeclaration(node) || this.tsc.isEnumDeclaration(node)){
 				path.push(node.name)
 			} else if(this.tsc.isClassDeclaration(node)){
 				if(path.length > 0 && !isStaticField){
@@ -224,6 +237,152 @@ export class RuntyperTricks extends ToolboxTransformer.ToolboxTricks {
 			throw new Error("Function declaration without name! How is this possible? " + decl.getText())
 		}
 		return name
+	}
+
+	moduleFilePath(modSpec: string, referencedFrom: Tsc.SourceFile): string {
+		let ambientSrcFiles = this.ambientModules.getAmbientModuleSourceFilePaths(modSpec)
+		if(ambientSrcFiles){
+			// if a module is declared in multiple files, take whatever (just do it consistently)
+			return ambientSrcFiles.sort()[0]!
+		} else {
+			let resolutionResult = this.tsc.resolveModuleName(
+				modSpec,
+				referencedFrom.fileName,
+				this.toolboxContext.program.getCompilerOptions(),
+				this.tsc.sys
+			)
+			if(resolutionResult.resolvedModule){
+				return resolutionResult.resolvedModule.resolvedFileName
+			} else {
+				throw new Error(`Cannot resolve file path of module ${modSpec} referenced from ${referencedFrom.fileName}`)
+			}
+		}
+		// return this.modulePathResolver.getCanonicalModuleName(result)
+	}
+
+	private findExportEqualsNamespaces(base: Tsc.Node): Tsc.ModuleDeclaration[] {
+		let result = [] as Tsc.ModuleDeclaration[]
+		base.forEachChild(child => {
+			if(!this.tsc.isExportAssignment(child)){
+				return
+			}
+			let symbol = this.checker.getSymbolAtLocation(child.expression)
+			if(!symbol){
+				return
+			}
+			let decls = symbol.declarations
+			if(decls){
+				decls.forEach(decl => {
+					if(this.tsc.isModuleDeclaration(decl)){
+						result.push(decl)
+					}
+				})
+			}
+		})
+		return result
+	}
+
+	private findExportedSymbol(base: Tsc.Node, name: string): Tsc.Node | null {
+		let exportEqualsNamespaces = this.findExportEqualsNamespaces(base)
+		if(exportEqualsNamespaces.length > 0){
+			let nodes = exportEqualsNamespaces
+				.map(ns => !ns.body ? null : this.findExportedSymbol(ns.body, name))
+				.filter(x => !!x)
+			if(nodes.length === 1){
+				return nodes[0]!
+			}
+			if(nodes.length > 1){
+				return null
+			}
+		}
+
+		let result: Tsc.Node | null = null
+		base.forEachChild(child => {
+			if(!this.isNodeExported(child)){
+				return
+			}
+
+			if(this.tsc.isVariableStatement(child)){
+				child.declarationList.declarations.forEach(decl => {
+					if(this.tsc.isIdentifier(decl.name) && decl.name.text === name){
+						result = decl
+					}
+				})
+			} else {
+				let path = this.getPathToNodeUpToLimit(child, x => x === base)
+				if(path.length === 1 && this.tsc.isIdentifier(path[0]!) && path[0]!.text === name){
+					result = child
+				}
+			}
+		})
+		return result
+	}
+
+	/** Get declaration of imported value */
+	findImportedDeclaration(importedName: string, modSpec: string, referencedFrom: Tsc.SourceFile): Tsc.Node {
+		let ambientModules = this.ambientModules.getAmbientModuleDeclarations(modSpec)
+		if(ambientModules){
+			let results = ambientModules.map(module => {
+				if(!module.body){
+					return null
+				} else {
+					return this.findExportedSymbol(module.body, importedName)
+				}
+			}).filter(x => !!x)
+			if(results.length > 1){
+				throw new Error(`Found more than one exported symbol ${importedName} in module ${modSpec}`)
+			} else if(results.length < 1){
+				throw new Error(`Cannot find exported symbol ${importedName} in module ${modSpec}`)
+			}
+			return results[0]!
+		}
+
+		let filePath = this.moduleFilePath(modSpec, referencedFrom)
+		let sourceFile = this.toolboxContext.program.getSourceFile(filePath)
+		if(!sourceFile){
+			throw new Error(`Failed to get source file for module ${modSpec}; resolved file name is ${filePath}`)
+		}
+		let result = this.findExportedSymbol(sourceFile, importedName)
+		if(!result){
+			throw new Error(`Cannot find exported symbol ${importedName} in module ${modSpec}`)
+		}
+		return result
+	}
+
+	/** Get a string that can be used as module specifier when importing, or null if the declaration is global and there is nothing to import */
+	getModuleNameForImport(node: Tsc.Node): string | null {
+		if(this.tsc.isSourceFile(node)){
+			if(!this.isModuleFile(node)){
+				return null
+			}
+			let externalPkg = this.modulePathResolver.getExternalPackageNameAndPath(node.fileName)
+			if(externalPkg){
+				return externalPkg.packageName
+			}
+			return this.modulePathResolver.getCanonicalModuleName(node.fileName)
+		} else if(this.tsc.isModuleDeclaration(node)){
+			if(node.flags & this.tsc.NodeFlags.GlobalAugmentation){
+				return null // `global` namespace
+			}
+			if(this.tsc.isStringLiteral(node.name)){
+				return node.name.text // ambient module
+			}
+		}
+
+		if(!node.parent){
+			throw new Error("Cannot generate import name for node " + node.getText())
+		} else {
+			return this.getModuleNameForImport(node.parent)
+		}
+	}
+
+	/** Does this file exports or imports anything? */
+	isModuleFile(file: Tsc.SourceFile): boolean {
+		let result = false
+		file.forEachChild(child => {
+			result = result || this.tsc.isImportDeclaration(child) || this.isNodeExported(child)
+		})
+		return result
 	}
 
 }

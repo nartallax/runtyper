@@ -3,6 +3,7 @@ import {FunctionNameMap, StringNodeableUniqMap} from "transformer/nodeable_uniq_
 import {RuntyperTricks} from "transformer/tricks"
 import {TypedVariable, TypeNodeDescriber} from "transformer/type_node_describer"
 import * as Tsc from "typescript"
+import {murmurHash} from "utils/murmur"
 
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 export interface TransParams extends Runtyper.TransformerParameters {
@@ -16,14 +17,10 @@ export class Transformer {
 	) {}
 
 	transform(file: Tsc.SourceFile): Tsc.SourceFile {
-		let refTypes = new StringNodeableUniqMap<Runtyper.Type>("t")
-		file = this.substituteSpecialFunctions(file, refTypes)
-		file = this.addTypeStructures(file, refTypes)
-		return file
+		return this.addTypeStructures(file)
 	}
 
-	private substituteSpecialFunctions(file: Tsc.SourceFile, refTypes: StringNodeableUniqMap<Runtyper.Type>): Tsc.SourceFile {
-		let typeDescriber = new TypeNodeDescriber(this.tricks, file, this.params, refTypes)
+	private substituteSpecialFunctions(root: Tsc.Node, typeDescriber: TypeNodeDescriber): Tsc.Node {
 
 		let visitor = (node: Tsc.Node): Tsc.Node => {
 			if(Tsc.isCallExpression(node)){
@@ -48,20 +45,19 @@ export class Transformer {
 			return Tsc.visitEachChild(node, visitor, this.tricks.transformContext)
 		}
 
-		return Tsc.visitEachChild(file, visitor, this.tricks.transformContext)
+		return Tsc.visitEachChild(root, visitor, this.tricks.transformContext)
 	}
 
-	private addTypeStructures(file: Tsc.SourceFile, refTypes: StringNodeableUniqMap<Runtyper.Type>): Tsc.SourceFile {
+	private addTypeStructures(file: Tsc.SourceFile): Tsc.SourceFile {
 		try {
 
 			return this.forEachNodeScoped(file,
-				(root, parentScope) => new Scope(
+				(root, parentScope) => new TransformationScope(
 					root,
 					parentScope,
 					this.tricks,
 					file,
-					this.params,
-					refTypes
+					this.params
 				),
 				(scope, root, parentScope) => {
 					if(Tsc.isSourceFile(root)){
@@ -82,6 +78,7 @@ export class Transformer {
 				(node, scope) => {
 					try {
 						scope.describer.currentNode = node
+						node = this.substituteSpecialFunctions(node, scope.describer)
 						this.updateScope(node, scope)
 					} finally {
 						scope.describer.currentNode = null
@@ -99,7 +96,7 @@ export class Transformer {
 	}
 
 	/** Add information about node structure to scope if applicable */
-	private updateScope(node: Tsc.Node, scope: Scope): void {
+	private updateScope(node: Tsc.Node, scope: TransformationScope): void {
 		if(Tsc.isInterfaceDeclaration(node)){
 			let type = scope.describer.describeInterface(node)
 			scope.refTypes.add(scope.describer.nameOfNode(node), type)
@@ -123,9 +120,7 @@ export class Transformer {
 			} else {
 				let clsFullName = scope.describer.nameOfNode(node.name)
 				scope.valueTypes.add(clsFullName, cls)
-				let path = this.tricks.getPathToNodeUpToLimit(node.name, x => x === scope.pathLimiter)
-				scope.functionsByName.add(clsFullName, path)
-
+				scope.addValueToFunctions(clsFullName, node.name)
 				scope.addVariables(variables)
 
 				methods.forEach(fn => {
@@ -135,17 +130,33 @@ export class Transformer {
 		}
 	}
 
-	private attachTypesToFile(file: Tsc.SourceFile, scope: Scope): Tsc.SourceFile {
+	private attachTypesToFile(file: Tsc.SourceFile, scope: TransformationScope): Tsc.SourceFile {
 		let maps = [scope.refTypes, scope.valueTypes, scope.functionsByName]
 		let forceImport = scope.forceImport
-		let nodes = [] as Tsc.Statement[]
+
+		let dataNodes = [] as Tsc.Statement[]
 		maps.forEach(map => {
 			let node = map.toNode(this.tricks, this.params.moduleIdentifier)
 			if(node){
-				nodes.push(node)
+				dataNodes.push(node)
 			}
 		})
-		if(nodes.length < 1 && !forceImport){
+
+		let importNodes = [] as Tsc.ImportDeclaration[]
+		for(let [modSpec, identifier] of scope.imports){
+			let factory = Tsc.factory
+			importNodes.push(factory.createImportDeclaration(undefined, undefined,
+				factory.createImportClause(
+					false, undefined, factory.createNamespaceImport(identifier)
+				),
+				factory.createStringLiteral(modSpec),
+				undefined
+			)
+			)
+		}
+
+
+		if(dataNodes.length < 1 && importNodes.length < 1 && !forceImport){
 			return file
 		}
 
@@ -158,8 +169,9 @@ export class Transformer {
 		return Tsc.factory.updateSourceFile(file,
 			[
 				imprt,
+				...importNodes,
 				...file.statements,
-				...nodes
+				...dataNodes
 			]
 		)
 	}
@@ -167,10 +179,10 @@ export class Transformer {
 	/** Iterate over all scopes in file and run a callback for each node in scope.
 	 * Scope = namespaces or toplevel (files) */
 	private forEachNodeScoped<T extends Tsc.SourceFile | Tsc.ModuleBlock>(scopeRoot: T,
-		openScope: (root: Tsc.SourceFile | Tsc.ModuleBlock, parentScope: Scope | null) => Scope,
-		closeScope: (scope: Scope, updatedRoot: Tsc.SourceFile | Tsc.ModuleBlock, parentScope: Scope | null) => Tsc.SourceFile | Tsc.ModuleBlock,
-		callback: (node: Tsc.Node, scope: Scope) => Tsc.Node,
-		parentScope: Scope | null = null): T {
+		openScope: (root: Tsc.SourceFile | Tsc.ModuleBlock, parentScope: TransformationScope | null) => TransformationScope,
+		closeScope: (scope: TransformationScope, updatedRoot: Tsc.SourceFile | Tsc.ModuleBlock, parentScope: TransformationScope | null) => Tsc.SourceFile | Tsc.ModuleBlock,
+		callback: (node: Tsc.Node, scope: TransformationScope) => Tsc.Node,
+		parentScope: TransformationScope | null = null): T {
 
 		let scope = openScope(scopeRoot, parentScope)
 
@@ -193,27 +205,29 @@ export class Transformer {
 }
 
 /** An object that hold information about types in current scope */
-class Scope {
+export class TransformationScope {
 
 	public valueTypes: StringNodeableUniqMap<Runtyper.Type>
+	public refTypes: StringNodeableUniqMap<Runtyper.Type>
 	public functionsByName: FunctionNameMap = new FunctionNameMap("f")
+	public imports: Map<string, Tsc.Identifier>
 	public forceImport = false
 	public readonly describer: TypeNodeDescriber
 
 	constructor(
-		public scopeRoot: Tsc.Node,
-		parentScope: Scope | null,
+		public scopeRoot: Tsc.SourceFile | Tsc.ModuleBlock,
+		parentScope: TransformationScope | null,
 		public tricks: RuntyperTricks,
 		public file: Tsc.SourceFile,
-		public readonly params: TransParams,
-		public readonly refTypes: StringNodeableUniqMap<Runtyper.Type>) {
+		public readonly params: TransParams) {
 
+		this.refTypes = parentScope ? parentScope.refTypes : new StringNodeableUniqMap<Runtyper.Type>("t")
+		this.imports = parentScope ? parentScope.imports : new Map()
 		this.valueTypes = parentScope?.valueTypes || new StringNodeableUniqMap<Runtyper.Type>("v")
-		this.describer = new TypeNodeDescriber(this.tricks, this.file, this.params, this.refTypes)
+		this.describer = new TypeNodeDescriber(this.tricks, this.file, this.params, this)
 	}
 
-
-	addFunctionSignature(nameNode: Tsc.Node, signature: Runtyper.CallSignature) {
+	addFunctionSignature(nameNode: Tsc.Node, signature: Runtyper.CallSignature): void {
 
 		let name = this.describer.nameOfNode(nameNode)
 
@@ -233,21 +247,57 @@ class Scope {
 		})
 
 		if(signature.hasImplementation){
-			let path = this.tricks.getPathToNodeUpToLimit(nameNode, x => x === this.pathLimiter)
-			this.functionsByName.add(name, path)
+			this.addValueToFunctions(name, nameNode)
 		}
 	}
 
-	get pathLimiter(): Tsc.Node | undefined {
-		return this.scopeRoot.parent?.parent
+	private isExportedFromScope(node: Tsc.Node): boolean {
+		if(node.parent === this.scopeRoot){
+			return this.tricks.isNodeExported(node)
+		} else if(node.parent){
+			return this.isExportedFromScope(node.parent)
+		} else {
+			return false // o_O
+		}
 	}
 
-	addVariables(variables: TypedVariable[]) {
+	addValueExpressionToFunctions(name: string, node: Tsc.Expression): void {
+		this.functionsByName.add(name, node)
+	}
+
+	addImportedValueToFunctions(name: string, node: Tsc.Node): void {
+		let moduleName = this.tricks.getModuleNameForImport(node)
+		if(!moduleName){
+			this.addValueToFunctions(name, node)
+			return
+		}
+
+		let moduleIdentifier = this.imports.get(moduleName)
+		if(!moduleIdentifier){
+			let safeModuleName = moduleName.replace(/[^a-zA-Z\d_]/g, "_").replace(/_{2,}/g, "_")
+			let identifierText = this.params.moduleIdentifier + "_" + safeModuleName + "_" + murmurHash(moduleName, 31337)
+			moduleIdentifier = Tsc.factory.createIdentifier(identifierText)
+			this.imports.set(moduleName, moduleIdentifier)
+		}
+
+		this.addValueToFunctions(name, node, moduleIdentifier)
+	}
+
+	addValueToFunctions(name: string, node: Tsc.Node, prefix?: Tsc.Identifier): void {
+		let exported = this.isExportedFromScope(node)
+		let limiter = exported ? this.scopeRoot.parent?.parent : this.scopeRoot
+		let path = this.tricks.getPathToNodeUpToLimit(node, x => x === limiter)
+		if(prefix){
+			path = [prefix, ...path]
+		}
+		this.functionsByName.add(name, path)
+	}
+
+	addVariables(variables: TypedVariable[]): void {
 		variables.forEach(v => {
 			let name = this.describer.nameOfNode(v.name)
 			this.valueTypes.add(name, v.type)
-			let path = this.tricks.getPathToNodeUpToLimit(v.name, x => x === this.pathLimiter)
-			this.functionsByName.add(name, path)
+			this.addValueToFunctions(name, v.name)
 		})
 	}
 

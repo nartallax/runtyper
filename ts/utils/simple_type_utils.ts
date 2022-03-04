@@ -115,7 +115,7 @@ export function removeConstantFromType(type: Runtyper.SimpleType, value: Runtype
 }
 
 
-export function isObjectIndexKeyType(type: Runtyper.Type): type is Runtyper.ObjectIndexKeyType {
+export function isObjectIndexKeyType(type: Runtyper.SimpleType | Runtyper.Type): type is Runtyper.ObjectIndexKeyType {
 	if(type.type === "constant" && (typeof(type.value) === "string" || typeof(type.value) === "number")){
 		return true
 	} else if(type.type === "constant_union"){
@@ -123,7 +123,8 @@ export function isObjectIndexKeyType(type: Runtyper.Type): type is Runtyper.Obje
 	} else if(type.type === "string" || type.type === "number"){
 		return true
 	} else if(type.type === "union"){
-		return !type.types.find(t => !isObjectIndexKeyType(t))
+		let types = type.types as (Runtyper.SimpleType | Runtyper.Type)[]
+		return !types.find(t => !isObjectIndexKeyType(t))
 	} else {
 		return false
 	}

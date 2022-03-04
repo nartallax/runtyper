@@ -85,10 +85,10 @@ export class StringNodeableUniqMap<T> extends NodeableUniqMap<string, T> {
 	}
 }
 
-export class FunctionNameMap extends StringNodeableUniqMap<Tsc.PropertyName[]> {
+export class FunctionNameMap extends StringNodeableUniqMap<Tsc.PropertyName[] | Tsc.Expression> {
 
 	protected valueToNode(tricks: RuntyperTricks, value: Tsc.PropertyName[]): Tsc.Expression {
-		return tricks.propNamesToAccessChain(value)
+		return Array.isArray(value) ? tricks.propNamesToAccessChain(value) : value
 	}
 
 }

@@ -17,12 +17,12 @@ export class TypeInferrer extends TypeDescriberBase {
 		super(tricks, file, params, currentNode)
 	}
 
-	inferVariableDeclarationType(decl: Tsc.VariableDeclaration, preferConst: boolean): Runtyper.Type {
+	inferVariableDeclarationType(decl: Tsc.VariableDeclaration | Tsc.PropertyDeclaration, preferConst: boolean): Runtyper.Type {
 		if(decl.initializer){
 			let hasDestructurization = !Tsc.isIdentifier(decl.name)
 			return this.inferExpressionType(decl.initializer, preferConst, hasDestructurization)
 		} else {
-			return this.fail("Cannot infer variable declaration type: no initializer: ", decl)
+			return this.fail("Cannot infer variable/property declaration type: no initializer: ", decl)
 		}
 	}
 
@@ -245,7 +245,7 @@ export class TypeInferrer extends TypeDescriberBase {
 
 		let name: string
 		if(Tsc.isImportSpecifier(decl)){
-			let importDescr = this.typeNodeDescriber.describeImportSpecifierSource(decl)
+			let importDescr = this.typeNodeDescriber.describeImportSpecifierSource(decl, [])
 			if(typeof(importDescr) !== "string"){
 				return importDescr
 			}

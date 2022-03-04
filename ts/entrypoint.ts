@@ -6,6 +6,7 @@ import {RuntyperTricks} from "transformer/tricks"
 import {Transformer, TransParams} from "transformer/transformer"
 import {TypeSimplifier} from "runtime/type_simplifier"
 import {ValidatorBuilderImpl} from "codegen/validator_builder"
+import {AmbientModuleCache} from "transformer/ambient_module_cache"
 
 export namespace Runtyper {
 
@@ -31,6 +32,7 @@ export namespace Runtyper {
 		readonly onAny: "throw_on_build" | "allow_anything"
 		readonly onUnknownFieldInObject: "validation_error" | "allow_anything"
 		readonly onNaNWhenExpectedNumber: "validation_error" | "allow"
+		readonly onClassInstance: "throw_on_build" | "check_by_instanceof"
 	}
 
 
@@ -106,6 +108,7 @@ export namespace Runtyper {
 			onUnknown: "throw_on_build",
 			onUnknownFieldInObject: "validation_error",
 			onNaNWhenExpectedNumber: "validation_error",
+			onClassInstance: "throw_on_build",
 			...(opts || {})
 		}
 
@@ -195,7 +198,9 @@ export namespace Runtyper {
 	| ConstantUnionType
 	| ArrayType<SimpleType>
 	| SimpleTupleType<SimpleType>
-	| SimpleObjectType<SimpleType>) & RefInfo
+	| SimpleObjectType<SimpleType>
+	| ClassInstanceType
+	) & RefInfo
 
 	/** Additional information about origin of the type */
 	export interface RefInfo {
@@ -431,6 +436,11 @@ export namespace Runtyper {
 		readonly values: (number | string)[]
 	}
 
+	export interface ClassInstanceType {
+		readonly type: "instance"
+		readonly cls: {new(...args: unknown[]): unknown}
+	}
+
 	/** This is one way of reporting errors from transformer
 	 * Thing is, there are a lot of ways to use Typescript, and some of them is painful to support in transformer
 	 * Therefore, transformer cannot process some types, and has to return error
@@ -461,8 +471,10 @@ export default ToolboxTransformer.makeImplodableTransformer<Runtyper.Transformer
 		allowedExtPacks: new Set(params.includeExternalTypesFrom)
 	}
 
+	let ambientCache = new AmbientModuleCache(opts.program.getTypeChecker())
+
 	return transformContext => {
-		let tricks = new RuntyperTricks(opts, transformContext, Tsc)
+		let tricks = new RuntyperTricks(opts, transformContext, Tsc, ambientCache)
 		return sourceFile => new Transformer(tricks, transParams).transform(sourceFile)
 	}
 })
