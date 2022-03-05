@@ -205,6 +205,15 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 		})
 	}
 
+	/** Describe class as name and generic parameters, without anything else */
+	private describeClassBase(decl: Tsc.ClassDeclaration): Runtyper.Class {
+		let typeParams = this.describeTypeParameters(decl)
+		return {
+			type: "class",
+			...(typeParams.length > 0 ? {typeParameters: typeParams} : {})
+		}
+	}
+
 	describeAlias(node: Tsc.TypeAliasDeclaration): Runtyper.Type {
 		return this.wrapTypeExtraction(() => {
 			let typeParameters = this.describeTypeParameters(node)
@@ -609,6 +618,10 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 		if(isValueDecl){
 			if(name){
 				this.scope.addImportedValueToFunctions(name, decl)
+				if(Tsc.isClassDeclaration(decl)){
+					let descr = this.describeClassBase(decl)
+					this.scope.valueTypes.add(name, descr)
+				}
 			}
 			return type?.type === "broken" ? type : null
 		} else if(Tsc.isEnumDeclaration(decl)){

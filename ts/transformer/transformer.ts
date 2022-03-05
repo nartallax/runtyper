@@ -20,25 +20,66 @@ export class Transformer {
 		return this.addTypeStructures(file)
 	}
 
-	private substituteSpecialFunctions(root: Tsc.Node, typeDescriber: TypeNodeDescriber): Tsc.Node {
+	private typeOfGenericArg(node: Tsc.CallExpression, scope: TransformationScope): Runtyper.Type {
+		let genArg = (node.typeArguments || [])[0]
+		if(!genArg){
+			throw new Error("This call expected to always have one explicit type argument: " + node.getText())
+		}
+
+		return scope.describer.describeType(genArg)
+	}
+
+	private makeAttachValidatorCall(baseCall: Tsc.CallExpression, fullName: boolean, scope: TransformationScope): Tsc.CallExpression {
+		let type = this.typeOfGenericArg(baseCall, scope)
+		let validatorFnArg = baseCall.arguments[0]
+		if(!validatorFnArg){
+			throw new Error("attachValidator() function called without argument! That's not allowed.")
+		}
+		let f = Tsc.factory
+		scope.forceImport = true
+		return f.createCallExpression(
+			f.createPropertyAccessExpression(
+				f.createPropertyAccessExpression(
+					f.createPropertyAccessExpression(
+						f.createIdentifier(this.params.moduleIdentifier),
+						f.createIdentifier("Runtyper")
+					),
+					f.createIdentifier("internal")
+				),
+				f.createIdentifier("attachValidator")
+			),
+			undefined,
+			[
+				this.tricks.createLiteralOfValue(type),
+				fullName ? f.createTrue() : f.createFalse(),
+				validatorFnArg
+			]
+		)
+	}
+
+	private substituteSpecialFunctions(root: Tsc.Node, scope: TransformationScope): Tsc.Node {
 
 		let visitor = (node: Tsc.Node): Tsc.Node => {
 			if(Tsc.isCallExpression(node)){
 				try {
-					typeDescriber.currentNode = node
+					scope.describer.currentNode = node
 					let type = this.tricks.checker.getTypeAtLocation(node)
 					if(this.tricks.typeHasMarker(type, "RUNTYPER_THIS_IS_MARKER_INTERFACE_FOR_TYPE_INSTANCE")){
 						let typeStructure: Runtyper.Type
 						let genArg = (node.typeArguments || [])[0]
 						if(!genArg){
-							typeStructure = typeDescriber.fail("Cannot describe type for query: no generic argument: ", node)
+							typeStructure = scope.describer.fail("Cannot describe type for query: no generic argument: ", node)
 						} else {
-							typeStructure = typeDescriber.describeType(genArg)
+							typeStructure = scope.describer.describeType(genArg)
 						}
 						return this.tricks.createLiteralOfValue(typeStructure)
+					} else if(this.tricks.typeHasMarker(type, "RUNTYPER_THIS_IS_MARKER_INTERFACE_FOR_ATTACH_VALIDATOR")){
+						return this.makeAttachValidatorCall(node, false, scope)
+					} else if(this.tricks.typeHasMarker(type, "RUNTYPER_THIS_IS_MARKER_INTERFACE_FOR_ATTACH_VALIDATOR_GENERIC")){
+						return this.makeAttachValidatorCall(node, true, scope)
 					}
 				} finally {
-					typeDescriber.currentNode = null
+					scope.describer.currentNode = null
 				}
 			}
 
@@ -78,7 +119,7 @@ export class Transformer {
 				(node, scope) => {
 					try {
 						scope.describer.currentNode = node
-						node = this.substituteSpecialFunctions(node, scope.describer)
+						node = this.substituteSpecialFunctions(node, scope)
 						this.updateScope(node, scope)
 					} finally {
 						scope.describer.currentNode = null
@@ -151,8 +192,7 @@ export class Transformer {
 				),
 				factory.createStringLiteral(modSpec),
 				undefined
-			)
-			)
+			))
 		}
 
 

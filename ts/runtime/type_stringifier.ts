@@ -1,4 +1,6 @@
 import {Runtyper} from "entrypoint"
+import {refTypes, valueTypes} from "runtime/runtime"
+import {GenArgs} from "runtime/type_simplifier"
 
 function constantValueToString(v: Runtyper.ConstantType["value"]): string {
 	if(v === true || v === false || v === null || v === undefined || typeof(v) === "number"){
@@ -75,4 +77,47 @@ export function simpleTypeToString(type: Runtyper.SimpleType, opts?: Partial<Run
 		case "instance": return type.cls.name || "<anon class>"
 	}
 
+}
+
+export function makeRefNameFromRef(reference: Runtyper.ReferenceType, full: boolean): string {
+	let typeMap = reference.type === "type_reference" ? refTypes : valueTypes
+	let target = typeMap.get(reference.name)
+	if(!target){
+		throw new Error("Cannot make reference of type " + JSON.stringify(reference) + ": type not found.")
+	}
+	let simplifier = Runtyper.getSimplifier()
+	let genArgs = simplifier.makeNewGenericArgs(reference, target, {})
+	return makeRefName(reference, target, genArgs, full)
+}
+
+export function makeRefName(reference: Runtyper.ReferenceType, target: Runtyper.Type, newGenArgs: GenArgs, full: boolean): string {
+	let refName: string
+	if(full){
+		refName = reference.name
+	} else {
+		// a little hackish, but whatever
+		let refParts = reference.name.split(":")
+		refName = refParts[refParts.length - 1] || ""
+	}
+	const typeParamArr = (target as {typeParameters?: Runtyper.TypeParameter[]}).typeParameters
+	const typeArgArr = reference.typeArguments
+	if(typeArgArr && typeArgArr.length > 0 && typeParamArr){
+		let argStrings = typeParamArr.map((param, i) => {
+			let arg = typeArgArr[i] || param.default
+			if(!arg){
+				return "???"
+			} else if(arg.type === "infer"){
+				return "infer " + arg.name
+			} else {
+				let name = param.name
+				let value = newGenArgs[name]
+				if(!value){
+					return "???"
+				}
+				return simpleTypeToString(value, {useLessName: true, fullNames: full})
+			}
+		})
+		refName += "<" + argStrings.join(", ") + ">"
+	}
+	return refName
 }

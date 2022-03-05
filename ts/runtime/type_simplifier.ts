@@ -1,9 +1,9 @@
 import {Runtyper} from "entrypoint"
-import {functionsByName, refTypes, valueTypes} from "runtime/runtime"
+import {functionsByName, processValidators, refTypes, typeValidators, valueTypes, valueValidators} from "runtime/runtime"
 import {deepEquals, RoRecord} from "utils/utils"
 import {copyTypeRefs, forEachTerminalTypeInUnion, isObjectIndexKeyType, makeIntersection, makeUnion, removeConstantFromType, removeTypesFromUnion} from "utils/simple_type_utils"
 import {getInferredUnknownName, makeInferredUnknown} from "inferred_unknown"
-import {simpleTypeToString} from "runtime/type_stringifier"
+import {makeRefName} from "runtime/type_stringifier"
 
 export type GenArgs = RoRecord<Runtyper.SimpleType>
 
@@ -13,6 +13,7 @@ interface MutableObjectType {
 	index?: Runtyper.ObjectIndexType<Runtyper.SimpleType>
 	refName?: string
 	fullRefName?: string
+	validators?: ((value: unknown) => boolean)[]
 }
 
 interface RefInfo {
@@ -28,6 +29,7 @@ export class TypeSimplifier {
 
 	simplify(type: Runtyper.Type, genArgs: {[name: string]: Runtyper.SimpleType} = {}): Runtyper.SimpleType {
 		try {
+			processValidators()
 			this.currentType = type
 			return new FinalSimplifier().simplifyFinal(this.simplifyInternal(type, genArgs, null))
 		} finally {
@@ -36,36 +38,33 @@ export class TypeSimplifier {
 		}
 	}
 
-	private makeRefName(reference: Runtyper.ReferenceType, target: {typeParameters?: Runtyper.TypeParameter[]}, newGenArgs: GenArgs, full: boolean): string {
-		let refName: string
-		if(full){
-			refName = reference.name
+	private getValidators(reference: Runtyper.ReferenceType, fullName: string): ((value: unknown) => boolean)[] | null {
+		let map = reference.type === "type_reference" ? typeValidators : valueValidators
+		let nonGenValidators = map.get(reference.name)
+		let genValidators = fullName === reference.name ? null : map.get(fullName)
+		if(nonGenValidators || genValidators){
+			return [
+				...(nonGenValidators || []),
+				...(genValidators || [])
+			]
 		} else {
-			// a little hackish, but whatever
-			let refParts = reference.name.split(":")
-			refName = refParts[refParts.length - 1] || ""
+			return null
 		}
-		const typeParamArr = target.typeParameters
-		const typeArgArr = reference.typeArguments
-		if(typeArgArr && typeArgArr.length > 0 && typeParamArr){
-			let argStrings = typeParamArr.map((param, i) => {
-				let arg = typeArgArr[i] || param.default
-				if(!arg){
-					return "???"
-				} else if(arg.type === "infer"){
-					return "infer " + arg.name
-				} else {
-					let name = param.name
-					let value = newGenArgs[name]
-					if(!value){
-						return "???"
-					}
-					return simpleTypeToString(value, {useLessName: true, fullNames: full})
-				}
-			})
-			refName += "<" + argStrings.join(", ") + ">"
+	}
+
+	private attachValidators(type: Runtyper.SimpleType, reference: Runtyper.ReferenceType, fullName: string): Runtyper.SimpleType {
+		let validators = this.getValidators(reference, fullName)
+		if(!validators){
+			return type
 		}
-		return refName
+
+		let mutableObject = this.currentlyDefiningRefTypeValues.get(fullName)
+		if(type === mutableObject){
+			mutableObject.validators = validators
+			return type
+		} else {
+			return {...type, validators}
+		}
 	}
 
 	private cachedSimplifyReference(reference: Runtyper.ReferenceType, genArgs: GenArgs, throwOnCircular: boolean): Runtyper.SimpleType {
@@ -75,7 +74,7 @@ export class TypeSimplifier {
 		}
 		if(targetType.type === "interface" || targetType.type === "alias"){
 			genArgs = this.makeNewGenericArgs(reference, targetType, genArgs)
-			let fullName = this.makeRefName(reference, targetType, genArgs, true)
+			let fullName = makeRefName(reference, targetType, genArgs, true)
 			// cache is very important for recursive types, as otherwise they will never resolve without stack overflow
 			// we can maybe sometimes miss it with same type being referenced from different places, no big deal
 			let result = this.knownRefTypesCache.get(fullName)
@@ -90,11 +89,13 @@ export class TypeSimplifier {
 				}
 				let refInfo: RefInfo = {
 					fullRefName: fullName,
-					refName: this.makeRefName(reference, targetType, genArgs, false)
+					refName: makeRefName(reference, targetType, genArgs, false)
 				}
-				this.currentlyDefiningRefTypeValues.set(fullName, makeFreshMutableObject(refInfo))
+				let mutableObject = makeFreshMutableObject(refInfo)
+				this.currentlyDefiningRefTypeValues.set(fullName, mutableObject)
 				try {
 					result = this.simplifyInternal(targetType, genArgs, refInfo)
+					result = this.attachValidators(result, reference, fullName)
 					this.knownRefTypesCache.set(fullName, result)
 				} finally {
 					this.currentlyDefiningRefTypeValues.delete(fullName)
@@ -105,7 +106,6 @@ export class TypeSimplifier {
 			// these two types also have generic parameters, but I won't support them (at least right now)
 			this.fail("type reference cannot target class or function: ", reference)
 		} else {
-			// what else we can even refer to?
 			return this.simplifyInternal(targetType, genArgs)
 		}
 	}
@@ -145,16 +145,31 @@ export class TypeSimplifier {
 			}
 			case "value_reference":{
 				let valType = valueTypes.get(type.name)
-				if(!valType || valType.type === "class"){
-					// maybe it's external class?
+				let result: Runtyper.SimpleType
+				let fullName: string
+
+				if(!valType){
 					if(functionsByName.has(type.name)){
-						return this.makeInstanceType(type, ref)
-					}
-					if(!valType){
+						// there can be situation when class is defined as interface with `new()`
+						// and then a variable is declared with type of the class
+						// that's the case with Buffer for example
+						// we will have no class type for such cases, and that's ok
+						// class is only needed to form ref correctly because of type parameters
+						result = this.makeInstanceType(type)
+						fullName = type.name
+					} else {
 						this.fail("type refers to value which is nowhere to be found: ", type)
 					}
+				} else {
+					fullName = makeRefName(type, valType, genArgs, true)
+					if(valType.type === "class"){
+						result = this.makeInstanceType(type)
+					} else {
+						result = this.simplifyInternal(valType, genArgs)
+					}
 				}
-				return this.simplifyInternal(valType, genArgs)
+
+				return this.attachValidators(result, type, fullName)
 			}
 			case "call_result_reference":{
 				let valType = valueTypes.get(type.functionName)
@@ -422,7 +437,7 @@ export class TypeSimplifier {
 		}
 	}
 
-	private makeInstanceType(refType: Runtyper.ReferenceType, ref: RefInfo | null): Runtyper.ClassInstanceType {
+	private makeInstanceType(refType: Runtyper.ReferenceType): Runtyper.ClassInstanceType {
 		if(refType.typeArguments && refType.typeArguments.length > 0){
 			this.fail("cannot check instance type if class has generic arguments: generic arguments are generally uncheckable at runtime: ", refType)
 		}
@@ -432,7 +447,7 @@ export class TypeSimplifier {
 			this.fail("cannot create `instance` simple type: no class is registered for the name: ", refType)
 		}
 
-		return {type: "instance", cls, ...(ref || {})}
+		return {type: "instance", cls}
 	}
 
 	private fail(msg: string, type?: Runtyper.Type | Runtyper.SimpleType): never {
@@ -500,11 +515,12 @@ export class TypeSimplifier {
 	}
 
 	/** Create a new set of generic arguments for a set of type parameters */
-	private makeNewGenericArgs(reference: Runtyper.ReferenceType, targetType: {typeParameters?: Runtyper.TypeParameter[]}, oldGenericArgs: GenArgs): GenArgs {
+	makeNewGenericArgs(reference: Runtyper.ReferenceType, targetType: Runtyper.Type, oldGenericArgs: GenArgs): GenArgs {
 		let simple = {} as Record<string, Runtyper.SimpleType>
-		if(targetType.typeParameters){
-			for(let i = 0; i < targetType.typeParameters.length; i++){
-				let param = targetType.typeParameters[i]!
+		let typeParams = (targetType as {typeParameters?: Runtyper.TypeParameter[]}).typeParameters
+		if(typeParams){
+			for(let i = 0; i < typeParams.length; i++){
+				let param = typeParams[i]!
 				let arg = !reference.typeArguments ? undefined : reference.typeArguments[i]
 				if(arg && arg.type === "infer"){
 					simple[param.name] = makeInferredUnknown(arg.name)

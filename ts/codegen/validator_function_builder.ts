@@ -67,9 +67,9 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 		return this.getUnusedIdentifier("validate_" + name)
 	}
 
-	private makeAllowEverythingExpression(reason: string): CodePart {
+	private makeAllowEverythingExpression(type: Runtyper.SimpleType, reason: string): CodePart {
 		let text = this.makeComment(reason) + " false"
-		return {isExpression: true, expression: () => text}
+		return this.conditionToExpression(type, () => text)
 	}
 
 	private makeDescribeErrorCall(valueCode: string, exprCode: string): string {
@@ -88,11 +88,42 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 			+ " */"
 	}
 
-	private conditionToExpression(condBuilder: (valueCode: string) => string): CodePart {
+	private getValidatorsCode(type: Runtyper.SimpleType, valueCode: string): string {
+		if(!type.validators){
+			return ""
+		}
+
+		let invocationsCode = type.validators.map(fn => {
+			let param = this.addParameter("user_validator", fn)
+			return `${param.name}(${valueCode})`
+		})
+
+		return invocationsCode.length === 0
+			? ""
+			: invocationsCode.length === 1
+				? invocationsCode[0]!
+				: "(" + invocationsCode.join(" || ") + ")"
+	}
+
+	private getValidatorsIfCode(type: Runtyper.SimpleType, valueCode: string): string {
+		let code = this.getValidatorsCode(type, valueCode)
+		if(!code){
+			return ""
+		}
+		return `if(${code}){
+			return ${this.makeDescribeErrorCall(valueCode, code)}
+		}`
+	}
+
+	private conditionToExpression(type: Runtyper.SimpleType, condBuilder: (valueCode: string) => string): CodePart {
 		return {
 			isExpression: true,
 			expression: valueCode => {
 				let cond = condBuilder(valueCode)
+				let validatorCond = this.getValidatorsCode(type, valueCode)
+				if(validatorCond){
+					cond = `(${cond} || ${validatorCond})`
+				}
 				return `(${cond} && ${this.makeDescribeErrorCall(valueCode, cond)})`
 			}
 		}
@@ -124,8 +155,7 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 			this.definedFunctionsOfTypes.set(type.fullRefName, fnDecl)
 		}
 		let builder = new CodeBuilder()
-		builder.append(this.makeValidatorFnComment(type))
-		builder.append(`function ${fnDecl.declarationName}`)
+		builder.append(`${this.makeValidatorFnComment(type)}function ${fnDecl.declarationName}`)
 		maker(builder)
 		fnDecl.declaration = builder.getResult()
 		return fnDecl
@@ -133,40 +163,40 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 
 	private buildPartNoCache(type: Runtyper.SimpleType): CodePart {
 		switch(type.type){
-			case "number": return this.conditionToExpression(valueCode => {
+			case "number": return this.conditionToExpression(type, valueCode => {
 				let code = `typeof(${valueCode}) !== "number"`
 				if(this.manager.opts.onNaNWhenExpectedNumber === "validation_error"){
 					code = `(${code} || Number.isNaN(${valueCode}))`
 				}
 				return code
 			})
-			case "string": return this.conditionToExpression(valueCode => {
+			case "string": return this.conditionToExpression(type, valueCode => {
 				return `typeof(${valueCode}) !== "string"`
 			})
-			case "boolean": return this.conditionToExpression(valueCode => {
+			case "boolean": return this.conditionToExpression(type, valueCode => {
 				return `(${valueCode} !== true && ${valueCode} !== false)`
 			})
 			case "any":
 				if(this.manager.opts.onAny === "allow_anything"){
-					return this.makeAllowEverythingExpression("any allows everything")
+					return this.makeAllowEverythingExpression(type, "any allows everything")
 				} else {
 					throw new Error("Failed to build validator: `any` type is not allowed")
 				}
 			case "unknown":
 				if(this.manager.opts.onUnknown === "allow_anything"){
-					return this.makeAllowEverythingExpression("unknown allows everything")
+					return this.makeAllowEverythingExpression(type, "unknown allows everything")
 				} else {
 					throw new Error("Failed to build validator: `unknown` type is not allowed")
 				}
-			case "never": return this.conditionToExpression(() => this.makeComment("type: never") + " true")
+			case "never": return this.conditionToExpression(type, () => this.makeComment("type: never") + " true")
 			case "constant":{
 				let valueToCheck = this.constValueToCode(type.value)
-				return this.conditionToExpression(valueCode => `${valueCode} !== ${valueToCheck}`)
+				return this.conditionToExpression(type, valueCode => `${valueCode} !== ${valueToCheck}`)
 			}
 			case "constant_union":{
 				let set = new Set(type.value)
 				let constrVal = this.addParameter("allowed_values", set)
-				return this.conditionToExpression(valueCode => `!${constrVal.name}.has(${valueCode})`)
+				return this.conditionToExpression(type, valueCode => `!${constrVal.name}.has(${valueCode})`)
 			}
 			case "instance":{
 				if(this.manager.opts.onClassInstance === "throw_on_build"){
@@ -174,7 +204,7 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 				}
 				let name = !type.refName || type.refName.length > 50 ? "cnstructor" : type.refName
 				let param = this.addParameter("cls_" + name, type.cls)
-				return this.conditionToExpression(valueCode => `!(${valueCode} instanceof ${param.name})`)
+				return this.conditionToExpression(type, valueCode => `!(${valueCode} instanceof ${param.name})`)
 			}
 			case "intersection": return this.buildIntersectionCheckingCode(type)
 			case "union": return this.buildUnionCheckingCode(type)
@@ -208,7 +238,7 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 		let objTypes = type.types.filter(type => type.type === "object") as Runtyper.SimpleObjectType<Runtyper.SimpleType>[]
 		if(objTypes.length < 2){
 			let subtypesCheckingParts = type.types.map(type => this.buildPart(type))
-			return this.conditionToExpression(valueCode => "("
+			return this.conditionToExpression(type, valueCode => "("
 				+ subtypesCheckingParts.map(part => this.partToCode(part, valueCode)).join(" && ")
 				+ ")")
 		}
@@ -225,26 +255,43 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 					return ${nonObjTypes.length < 1 ? this.makeDescribeErrorCall(paramName, initialCheck) : nonObjTypes.map(type => this.partToCode(this.buildPart(type), paramName)).join(" && ")}
 				}
 
+				var checkResult
+
 				${this.discriminationPackToCode(discrGroups, paramName)}
+
+				${this.getValidatorsIfCode(type, paramName)}
+
+				return false
 			}`)
 		})
 	}
 
 	private discriminationPackToCode(pack: DiscriminatedTypePack, valueCode: string): string {
 		if(Array.isArray(pack)){
-			return "return " + pack.map(type => this.partToCode(this.buildPart(type), valueCode)).join(" && ")
+			return `
+				checkResult = ${pack.map(type => this.partToCode(this.buildPart(type), valueCode)).join(" && ")}
+				if(checkResult){
+					return checkResult
+				}
+			`
 		}
 
-		let cases = [...pack.mapping].map(([value, subpack]) =>
-			"case " + this.constValueToCode(value) + ": " + this.discriminationPackToCode(subpack, valueCode)
-		).join("\n")
+		let cases = [...pack.mapping].map(([value, subpack]) => `
+			case ${this.constValueToCode(value)}: {
+				${this.discriminationPackToCode(subpack, valueCode)}
+				break
+			}
+		`).join("\n")
 
 		let dflt = Array.isArray(pack.default) && pack.default.length < 1
 			? "return " + this.makeDescribeErrorCall(
 				valueCode,
 				"!allowedConstantUnionValues.has(" + this.makeLiteralPropertyAccessExpression(valueCode, pack.propertyName) + ")"
 			)
-			: this.discriminationPackToCode(pack.default, valueCode)
+			: `{
+				${this.discriminationPackToCode(pack.default, valueCode)}
+				break
+			}`
 
 		return `switch(${this.makeLiteralPropertyAccessExpression(valueCode, pack.propertyName)}){
 			${cases}
@@ -263,7 +310,7 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 		})
 
 		if(objectTypes.length === 0){
-			return this.conditionToExpression(valueCode => "("
+			return this.conditionToExpression(type, valueCode => "("
 			+ subtypesCheckingParts.map(part => this.partToCode(part, valueCode)).join(" || ")
 			+ ")")
 		}
@@ -297,6 +344,8 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 						parentIntCont.merge(intCont)
 					}
 				`}
+
+				${this.getValidatorsIfCode(type, paramName)}
 	
 				return false
 			}`)
@@ -321,6 +370,9 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 						return checkResult
 					}
 				}
+
+				${this.getValidatorsIfCode(type, paramName)}
+
 				return false
 			}`)
 		})
@@ -411,6 +463,8 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 
 				${restCheckerCode}
 
+				${this.getValidatorsIfCode(type, paramName)}
+
 				return false
 			}`)
 		})
@@ -470,6 +524,8 @@ export class ValidatorFunctionBuilder extends FunctionBuilder {
 						}
 					}
 				`}
+
+				${this.getValidatorsIfCode(type, paramName)}
 
 				return false
 			}`)

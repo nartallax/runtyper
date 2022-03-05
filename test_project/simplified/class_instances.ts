@@ -4,6 +4,7 @@ import {DogCls, MyBuffer, MyDogs, MyNyaNyaNya, MyRunner, MyValidationError, Name
 import {ClamsensorTestRunner} from "@nartallax/clamsensor"
 import {MyNyaNya} from "types/exportequals_to_be_imported"
 import {ReadStream} from "fs"
+import {anyOrUnknown} from "validation/user_validators"
 
 simplificationTests.push([
 	Runtyper.getType<DogCls>(),
@@ -51,7 +52,7 @@ simplificationTests.push([
 
 simplificationTests.push([
 	Runtyper.getType<StreamOrType>(),
-	{type: "union", types: [{type: "object", properties: {type: {type: "constant_union", value: ["any", "boolean", "never", "number", "string", "unknown"]}}, refName: "Runtyper.PrimitiveType", fullRefName: "@nartallax/runtyper/runtyper:Runtyper.PrimitiveType"}, {type: "instance", cls: ReadStream}], refName: "StreamOrType", fullRefName: "/types/class_instances:StreamOrType"}
+	{type: "union", types: [{type: "object", properties: {type: {type: "constant_union", value: ["any", "boolean", "never", "number", "string", "unknown"]}}, refName: "Runtyper.PrimitiveType", fullRefName: "@nartallax/runtyper/runtyper:Runtyper.PrimitiveType", validators: [anyOrUnknown as (value: unknown) => boolean]}, {type: "instance", cls: ReadStream}], refName: "StreamOrType", fullRefName: "/types/class_instances:StreamOrType"}
 
 ])
 

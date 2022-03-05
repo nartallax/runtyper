@@ -44,11 +44,15 @@ export namespace Runtyper {
 
 	export const simpleTypeToString: (type: SimpleType, params?: Partial<SimpleTypeStringificationOptions>) => string = TypeStringifier.simpleTypeToString
 
+	function throwNoExecute(): never {
+		throw new Error("This function never meant to be actually executed! If you see this error, that means you broke the code (for example, passed this function around instead of just calling it), or never set up the transformer in the first place.")
+	}
 
 	/** Get description for type T
 	 * This function is never actually called; instead, it transformed to fetch type by name */
 	export function getType<T>(): Type & RUNTYPER_THIS_IS_MARKER_INTERFACE_FOR_TYPE_INSTANCE {
-		throw new Error("This function never meant to be actually executed! If you see this error, that means you broke the code (for example, passed this function around instead of just calling it), or never set up the transformer in the first place.") as unknown as T // cast is just to get rid of unused notice
+		throwNoExecute() as unknown as T // cast is just to get rid of unused notice
+		return null as unknown as Type
 	}
 
 	// eslint-disable-next-line @typescript-eslint/no-empty-interface
@@ -56,19 +60,30 @@ export namespace Runtyper {
 		// it is left blank intentionally, as it is indeed marker interface
 	}
 
-	/** Build a function that will verify that value matches the type description.
-	 * Validator will throw error on first mismatch.
-	 * Building validators is kinda expensive, so don't do it for every method */
-	// export const buildValidator = runtime.buildValidator
-	/** Attaches a validator to a type. Validator expected to throw detailed message if anything goes wrong.
-	 * When any kind of validator is built and this type is discovered, call to this validator will be issued. */
-	// export const attachValidator = runtime.attachValidator
+	/** Append custom validating function to a type
+	 * Validating function should return `true` if validation is not passed, `false` if value is good
+	 * Passing a generic argument to this function call is mandatory! A type will be resolved by the argument.
+	 * Generic arguments of the type are discarded; that is, validator will be applied when checking value to match this type regardless of values of generic parameters */
+	export function attachValidator<T>(validator: (value: T) => boolean): RUNTYPER_THIS_IS_MARKER_INTERFACE_FOR_ATTACH_VALIDATOR | void {
+		void validator
+		throwNoExecute()
+	}
 
-	/** Type information about interfaces and type aliases */
-	// export const refTypes: ReadonlyMap<string, Type> = runtime.refTypes
-	// export const functionsByName: ReadonlyMap<string, () => void> = runtime.functionsByName
-	/** Type information about variables, constants, classes and their methods (outside of the functions) */
-	// export const valueTypes: ReadonlyMap<string, Type> = runtime.valueTypes
+	// eslint-disable-next-line @typescript-eslint/no-empty-interface
+	interface RUNTYPER_THIS_IS_MARKER_INTERFACE_FOR_ATTACH_VALIDATOR {
+		// nothing
+	}
+
+	/** Same as `attachValidator`, but does not discard generic arguments.
+	 * For example, if you are attaching validator to Box<string>, it won't be applied when checking Box<number> */
+	export function attachValidatorWithSpecificGenericParams<T>(validator: (value: T) => boolean): RUNTYPER_THIS_IS_MARKER_INTERFACE_FOR_ATTACH_VALIDATOR_GENERIC | void {
+		void validator
+		throwNoExecute()
+	}
+	// eslint-disable-next-line @typescript-eslint/no-empty-interface
+	interface RUNTYPER_THIS_IS_MARKER_INTERFACE_FOR_ATTACH_VALIDATOR_GENERIC {
+		// nothing
+	}
 
 	/** Some internal functions.
 	 * Calls to those functions appear in generated code. You should never invoke them manually. */
@@ -93,6 +108,8 @@ export namespace Runtyper {
 				}
 			}
 		}
+
+		export const attachValidator: unknown = runtime.attachValidator
 	}
 
 	let simplifier: TypeSimplifier | null = null
@@ -149,11 +166,7 @@ export namespace Runtyper {
 	export function cleanup(): void {
 		simplifier = null
 		builders = {}
-		runtime.attachedValidators.clear()
-		runtime.functionsByName.clear()
-		runtime.nameByFunctions.clear()
-		runtime.refTypes.clear()
-		runtime.valueTypes.clear()
+		runtime.cleanupAllMaps()
 	}
 
 }
@@ -208,6 +221,8 @@ export namespace Runtyper {
 		/** Same as refName, just with more info.
 		   * Thought to be unique (two types with same fullRefName should be actually the same) */
 		readonly fullRefName?: string
+		/** Validators that were attached to this type before simplification */
+		readonly validators?: ((value: unknown) => boolean)[]
 	}
 
 	export interface Class {

@@ -94,10 +94,6 @@ export abstract class FunctionBuilder {
 	}
 
 	protected buildStartingAt(part: CodePart, inputValueIdentifier: string, codePreamble = ""): unknown {
-		let allValues = [...this.parameters].map(([name, value]) => {
-			return {name, value} as FunctionParameter
-		}).sort((a, b) => a.name > b.name ? 1 : -1)
-
 		let code = "\"use strict\";\n" + codePreamble
 
 		let sortedDecls = [...this.functions]
@@ -118,8 +114,14 @@ export abstract class FunctionBuilder {
 		}
 		code += `\n//# sourceURL=runtyper_validator_generated_code_${id}`
 
-		// if(code.indexOf("WildMix") > 0){
-		// 	console.log(code)
+		// grabbing parameters only after ALL the code is generated
+		// otherwise some parameters may still not be defined
+		let allValues = [...this.parameters].map(([name, value]) => {
+			return {name, value} as FunctionParameter
+		}).sort((a, b) => a.name > b.name ? 1 : -1)
+
+		// if(code.indexOf("Whatever") > 0){
+		// 	console.log(allValues.map(x => x.name), code)
 		// }
 
 		// eslint-disable-next-line @typescript-eslint/ban-types

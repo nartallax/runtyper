@@ -8,7 +8,8 @@ export function copyTypeRefs(resultType: Runtyper.SimpleType, baseType: Runtyper
 		return {
 			...resultType,
 			refName: baseType.refName,
-			fullRefName: baseType.fullRefName
+			fullRefName: baseType.fullRefName,
+			...(baseType.validators ? {validators: baseType.validators} : {})
 		}
 	}
 }

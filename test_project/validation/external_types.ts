@@ -22,3 +22,15 @@ validationTests.push([
 	{x: 5, y: 15, z: 10, name: "uwu"},
 	"!(\"y\" in obj)"
 ])
+
+validationTests.push([
+	Runtyper.getType<Record<string, null>>(),
+	{},
+	null
+])
+
+validationTests.push([
+	Runtyper.getType<Runtyper.BrokenType>(),
+	{type: "broken", file: "", node: "", message: ""},
+	null
+])
