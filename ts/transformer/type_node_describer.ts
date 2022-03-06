@@ -122,7 +122,7 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 	}
 
 	describeCallSignature(decl: Tsc.FunctionDeclaration | Tsc.CallSignatureDeclaration | Tsc.FunctionTypeNode | Tsc.MethodDeclaration | Tsc.MethodSignature | Tsc.ArrowFunction): Runtyper.CallSignature {
-		let params = decl.parameters.map(param => {
+		let params = decl.parameters.map((param, i) => {
 			let typeNode = param.type
 			let type: Runtyper.Type
 			if(!typeNode){
@@ -137,6 +137,9 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 			if(param.dotDotDotToken && type.type === "array"){
 				type = type.valueType
 			}
+			if(Tsc.isIdentifier(param.name) && param.name.text === "this" && i === 0){
+				return null
+			}
 			return {
 				type: "parameter",
 				...(Tsc.isIdentifier(param.name) ? {name: param.name.text} : {}),
@@ -144,7 +147,7 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 				...(param.questionToken || param.initializer ? {optional: true} : {}),
 				...(param.dotDotDotToken ? {rest: true} : {})
 			} as Runtyper.FunctionParameter
-		})
+		}).filter(x => !!x) as Runtyper.FunctionParameter[]
 
 		let retTypeNode = decl.type
 		let retType = !retTypeNode

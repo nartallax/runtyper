@@ -26,3 +26,12 @@ export function reverseType(x: string | number): string | number {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	return x as any // whatever
 }
+
+
+interface MyZ {
+	z: number
+}
+
+export function funcWithThis(this: MyZ, input: number | string): string {
+	return (this.z + "") + (input as string)
+}

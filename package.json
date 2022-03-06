@@ -1,6 +1,6 @@
 {
   "name": "@nartallax/runtyper",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A Typescript transformer that stores information about types to use in runtime.",
   "main": "runtyper.js",
   "types": "runtyper.d.ts",
