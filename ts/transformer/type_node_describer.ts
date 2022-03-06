@@ -134,11 +134,15 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 			} else {
 				type = this.describeType(typeNode)
 			}
+			if(param.dotDotDotToken && type.type === "array"){
+				type = type.valueType
+			}
 			return {
 				type: "parameter",
 				...(Tsc.isIdentifier(param.name) ? {name: param.name.text} : {}),
 				valueType: type,
-				...(param.questionToken || param.initializer ? {optional: true} : {})
+				...(param.questionToken || param.initializer ? {optional: true} : {}),
+				...(param.dotDotDotToken ? {rest: true} : {})
 			} as Runtyper.FunctionParameter
 		})
 

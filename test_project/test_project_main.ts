@@ -2,11 +2,14 @@ import {Runtyper} from "@nartallax/runtyper"
 
 export const simplificationTests = [] as [Runtyper.Type, (Runtyper.SimpleType | string)][]
 export const validationTests = [] as [Runtyper.Type, unknown, string | null, Partial<Runtyper.ValidatorBuilderOptions>?][]
+// function, arguments, return value or error
+// eslint-disable-next-line @typescript-eslint/ban-types
+export const functionTests = [] as [Function, unknown, unknown | string, Partial<Runtyper.FunctionArgumentCheckerOptions>?][]
 let totalTestsRun = 0
 
 export function main(): void {
 
-	let failedCount = runSimplificationTests() + runValidationTests()
+	let failedCount = runSimplificationTests() + runValidationTests() + runFunctionTests()
 
 	if(failedCount === 0){
 		console.error(`Testing successful, ${totalTestsRun} tests passed.`)
@@ -92,13 +95,62 @@ function runValidationTests(): number {
 				console.error("value: " + JSON.stringify(value))
 				console.error("expected no error")
 				console.error("got error text: " + e.message)
-				console.error("stack: " + e.stack)
+				// console.error("stack: " + e.stack)
 				failCount++
 			} else if(e.message.indexOf(expectedResult) < 0){
 				console.error("\nValidation test failed:")
 				console.error("type: " + JSON.stringify(type))
 				console.error("value: " + JSON.stringify(value))
 				console.error("expected error: " + expectedResult)
+				console.error("got error text: " + e.message)
+				// console.error("stack: " + e.stack)
+				failCount++
+			}
+		}
+	}
+	return failCount
+}
+
+function runFunctionTests(): number {
+	let failCount = 0
+	for(let [fn, args, expectedResult, mbOptions] of functionTests){
+		totalTestsRun++
+		try {
+			let checkResult: unknown
+			if(Array.isArray(args)){
+				Runtyper.getArrayParameterChecker(fn as () => void, mbOptions)(args)
+				// eslint-disable-next-line prefer-spread
+				checkResult = fn(...args)
+			} else {
+				let arr = Runtyper.getObjectParameterChecker(fn as () => void, mbOptions)(args as Record<string, unknown>)
+				checkResult = fn(...arr)
+			}
+
+			if(!deepEquals(checkResult, expectedResult)){
+				console.error("\nFunction test failed:")
+				console.error("function: " + fn)
+				console.error("arguments: " + JSON.stringify(args))
+				console.error("expected: " + JSON.stringify(expectedResult))
+				console.error("got: " + JSON.stringify(checkResult))
+				failCount++
+			}
+		} catch(e){
+			if(!(e instanceof Error)){
+				throw e
+			}
+			if(typeof(expectedResult) !== "string"){
+				console.error("\nFunction test failed:")
+				console.error("function: " + fn)
+				console.error("arguments: " + JSON.stringify(args))
+				console.error("expected no error")
+				console.error("got error text: " + e.message)
+				// console.error("stack: " + e.stack)
+				failCount++
+			} else if(e.message.indexOf(expectedResult) < 0){
+				console.error("\nValidation test failed:")
+				console.error("function: " + fn)
+				console.error("arguments: " + JSON.stringify(args))
+				console.error("expected error (or value): " + expectedResult)
 				console.error("got error text: " + e.message)
 				// console.error("stack: " + e.stack)
 				failCount++

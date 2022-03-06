@@ -8,7 +8,8 @@ export interface ErrorValidationResult {
 }
 
 export type RawValidator = (value: unknown) => ErrorValidationResult | null | undefined | false
-export type WrappedValidator<T = unknown> = (value: unknown) => value is T
+export type WrappedThrowingValidator<T = unknown> = (value: unknown) => value is T
+export type WrappedNonThrowingValidator = (value: unknown) => Runtyper.ValidationError | null
 
 interface ProxyFunctionPair {
 	set(realFn: (...args: unknown[]) => unknown): void
@@ -23,20 +24,29 @@ export class ValidatorBuilderImpl {
 
 	readonly rawValidators = new Map<string, RawValidator>()
 	readonly currentlyBuildingValidators = new Map<string, ProxyFunctionPair | null>()
-	readonly wrappedValidators = new Map<string, WrappedValidator>()
+	readonly wrappedThrowingValidators = new Map<string, WrappedThrowingValidator>()
+	readonly wrappedNonThrowingValidators = new Map<string, WrappedNonThrowingValidator>()
 
 	build<T = unknown>(type: Runtyper.SimpleType): (value: unknown) => value is T {
+		return this.buildWrapCached(type, raw => this.wrapThrowing<T>(raw), this.wrappedThrowingValidators) as WrappedThrowingValidator<T>
+	}
+
+	buildNonThrowing(type: Runtyper.SimpleType): (value: unknown) => Runtyper.ValidationError | null {
+		return this.buildWrapCached(type, raw => this.wrapNonThrowing(raw), this.wrappedNonThrowingValidators)
+	}
+
+	private buildWrapCached<T>(type: Runtyper.SimpleType, wrapper: (raw: RawValidator) => T, cache: Map<string, T>): T {
 		if(type.fullRefName){
-			let wrapped = this.wrappedValidators.get(type.fullRefName)
+			let wrapped = cache.get(type.fullRefName)
 			if(wrapped){
-				return wrapped as WrappedValidator<T>
+				return wrapped
 			}
 		}
 		try {
 			let raw = this.buildInternal(type)
-			let wrapped = this.wrap<T>(raw)
+			let wrapped = wrapper(raw)
 			if(type.fullRefName){
-				this.wrappedValidators.set(type.fullRefName, wrapped)
+				cache.set(type.fullRefName, wrapped)
 			}
 			return wrapped
 		} finally {
@@ -48,13 +58,29 @@ export class ValidatorBuilderImpl {
 		this.currentlyBuildingValidators.clear()
 	}
 
-	private wrap<T>(rawValidator: RawValidator): WrappedValidator<T> {
+	private wrapThrowing<T>(rawValidator: RawValidator): WrappedThrowingValidator<T> {
 		return function validatorWrapper(value: unknown): value is T {
 			let result = rawValidator(value)
 			if(!result){
 				return true
 			} else {
 				throw new Runtyper.ValidationError(
+					result.value,
+					result.path.reverse(),
+					result.expression,
+					value
+				)
+			}
+		}
+	}
+
+	private wrapNonThrowing(rawValidator: RawValidator): WrappedNonThrowingValidator {
+		return function validatorWrapper(value: unknown) {
+			let result = rawValidator(value)
+			if(!result){
+				return null
+			} else {
+				return new Runtyper.ValidationError(
 					result.value,
 					result.path.reverse(),
 					result.expression,

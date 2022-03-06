@@ -7,6 +7,7 @@ import {Transformer, TransParams} from "transformer/transformer"
 import {TypeSimplifier} from "runtime/type_simplifier"
 import {ValidatorBuilderImpl} from "codegen/validator_builder"
 import {AmbientModuleCache} from "transformer/ambient_module_cache"
+import {FunctionArgumentChecker} from "runtime/function_argument_checker"
 
 export namespace Runtyper {
 
@@ -23,7 +24,8 @@ export namespace Runtyper {
 	}
 
 	export interface ValidatorBuilder {
-		build<T = unknown>(type: Runtyper.SimpleType): (value: unknown) => value is T
+		build<T = unknown>(type: SimpleType): (value: unknown) => value is T
+		buildNonThrowing(type: SimpleType): (value: unknown) => ValidationError | null
 	}
 
 	export interface ValidatorBuilderOptions {
@@ -32,6 +34,28 @@ export namespace Runtyper {
 		readonly onUnknownFieldInObject: "validation_error" | "allow_anything"
 		readonly onNaNWhenExpectedNumber: "validation_error" | "allow"
 		readonly onClassInstance: "throw_on_build" | "check_by_instanceof"
+	}
+
+	function getFullValidatorBuilderOpts(opts?: Partial<ValidatorBuilderOptions>): ValidatorBuilderOptions {
+		return {
+			onAny: "throw_on_build",
+			onUnknown: "throw_on_build",
+			onUnknownFieldInObject: "validation_error",
+			onNaNWhenExpectedNumber: "validation_error",
+			onClassInstance: "throw_on_build",
+			...(opts || {})
+		}
+	}
+
+	export interface FunctionArgumentCheckerOptions extends ValidatorBuilderOptions {
+		readonly onExtraArguments: "validation_error" | "allow_anything"
+	}
+
+	function getFullArgCheckerOpts(opts?: Partial<FunctionArgumentCheckerOptions>): FunctionArgumentCheckerOptions {
+		return {
+			onExtraArguments: "validation_error",
+			...getFullValidatorBuilderOpts(opts)
+		}
 	}
 
 
@@ -119,14 +143,7 @@ export namespace Runtyper {
 
 	let builders = {} as {[k: string]: ValidatorBuilder}
 	export function getValidatorBuilder(opts?: Partial<ValidatorBuilderOptions>): ValidatorBuilder {
-		let fullOpts: ValidatorBuilderOptions = {
-			onAny: "throw_on_build",
-			onUnknown: "throw_on_build",
-			onUnknownFieldInObject: "validation_error",
-			onNaNWhenExpectedNumber: "validation_error",
-			onClassInstance: "throw_on_build",
-			...(opts || {})
-		}
+		let fullOpts = getFullValidatorBuilderOpts(opts)
 
 		let key = Object.keys(fullOpts).sort()
 			.map(key => fullOpts[key as keyof ValidatorBuilderOptions])
@@ -135,17 +152,32 @@ export namespace Runtyper {
 		return builders[key] ||= new ValidatorBuilderImpl(fullOpts)
 	}
 
+	/** Having a function, make function that validates array of arguments
+	 * If validation is not passed, the function will throw */
+	export function getArrayParameterChecker(fn: () => void, opts?: Partial<FunctionArgumentCheckerOptions>): (args: unknown[]) => void {
+		return new FunctionArgumentChecker(getFullArgCheckerOpts(opts)).buildForArray(fn)
+	}
+
+	/** Having a function, make function that validates object-map of arguments and lay them in order of appearance
+	 * If validation not passed, the function will throw
+	 * Resulting array of values may be used to call source function: `fn(...values)` */
+	export function getObjectParameterChecker(fn: () => void, opts?: Partial<FunctionArgumentCheckerOptions>): (args: {readonly [k: string]: unknown}) => unknown[] {
+		return new FunctionArgumentChecker(getFullArgCheckerOpts(opts)).buildForObject(fn)
+	}
+
 	export class ValidationError extends Error {
 		public readonly badValue: unknown
 		public readonly valuePath: readonly (string | number)[]
 		public readonly validatingExpression: string
 		public readonly sourceValue: unknown
+
 		constructor(badValue: unknown,
 			valuePath: readonly (string | number)[],
 			validatingExpression: string,
-			sourceValue: unknown) {
+			sourceValue: unknown,
+			rootValueName = "value") {
 
-			let pathStr = "value" + valuePath
+			let pathStr = rootValueName + valuePath
 				.map(x => typeof(x) === "number"
 					? "[" + x + "]"
 					: x.match(/^[a-zA-Z_][a-zA-Z\\d_]*$/)
@@ -157,6 +189,16 @@ export namespace Runtyper {
 			this.valuePath = valuePath
 			this.validatingExpression = validatingExpression
 			this.sourceValue = sourceValue
+		}
+
+		withDifferentValueName(name: string): ValidationError {
+			return new ValidationError(
+				this.badValue,
+				this.valuePath,
+				this.validatingExpression,
+				this.sourceValue,
+				name
+			)
 		}
 	}
 
@@ -279,6 +321,7 @@ export namespace Runtyper {
 		readonly name?: string
 		readonly valueType: Type
 		readonly optional?: true
+		readonly rest?: true
 	}
 
 	export interface PrimitiveType {
