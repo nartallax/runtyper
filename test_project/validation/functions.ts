@@ -1,4 +1,5 @@
 import {functionTests} from "test_project_main"
+import {TextRange} from "typescript"
 
 function sumTwoNumbers(a: number, b: number): number {
 	return a + b
@@ -321,4 +322,47 @@ functionTests.push([
 	namedMul,
 	{base: 2, postfix: true, otherNums: [2, 3, undefined]},
 	"bad value"
+])
+
+
+function isGoodBuffer(b: Buffer): boolean {
+	return b.length === 0
+}
+
+functionTests.push([
+	isGoodBuffer,
+	[null],
+	"bad value",
+	{onClassInstance: "check_by_instanceof"}
+])
+
+functionTests.push([
+	isGoodBuffer,
+	[Buffer.alloc(0)],
+	true,
+	{onClassInstance: "check_by_instanceof"}
+])
+
+functionTests.push([
+	isGoodBuffer,
+	[Buffer.alloc(1)],
+	false,
+	{onClassInstance: "check_by_instanceof"}
+])
+
+
+function isGoodTextRange(b: {range: TextRange}): boolean {
+	return b.range.end === 1
+}
+
+functionTests.push([
+	isGoodTextRange,
+	[{range: {end: 1}}],
+	"bad value"
+])
+
+functionTests.push([
+	isGoodTextRange,
+	[{range: {end: 1, pos: 0}}],
+	true
 ])

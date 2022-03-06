@@ -15,11 +15,5 @@ union/intersection + object with index (tests here)
 
 local goals:
 
-test for optional function params
-test for function params with defaults
-test for function params with spread
-test for function params with spread AND defaults/optionals
-test for functions that expect external types, including those mixed into other types like interface fields or generic params
-
 check d.ts for type leaks
 check all the TODOs

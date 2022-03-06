@@ -119,7 +119,6 @@ function runFunctionTests(): number {
 			let checkResult: unknown
 			if(Array.isArray(args)){
 				Runtyper.getArrayParameterChecker(fn as () => void, mbOptions)(args)
-				// eslint-disable-next-line prefer-spread
 				checkResult = fn(...args)
 			} else {
 				let arr = Runtyper.getObjectParameterChecker(fn as () => void, mbOptions)(args as Record<string, unknown>)
