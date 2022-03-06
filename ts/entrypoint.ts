@@ -165,6 +165,10 @@ export namespace Runtyper {
 		return new FunctionArgumentChecker(getFullArgCheckerOpts(opts)).buildForObject(fn)
 	}
 
+	/** Having a class constructor, get all public methods in the class, and possibly in parent classes */
+	// eslint-disable-next-line @typescript-eslint/ban-types
+	export const getPublicMethodsOfClass: (cls: Function, includeParentClasses?: boolean) => Record<string, Function> = runtime.getPublicMethodsOfClass
+
 	export class ValidationError extends Error {
 		public readonly badValue: unknown
 		public readonly valuePath: readonly (string | number)[]
@@ -235,7 +239,7 @@ export namespace Runtyper {
 	| IndexAccessType
 	| ConditionalType
 	| Runtyper.FunctionDeclaration
-	| Runtyper.Class
+	| Runtyper.ClassDeclaration
 	| InterfaceDeclaration
 	| AliasDeclaration
 	| EnumDeclaration
@@ -267,7 +271,7 @@ export namespace Runtyper {
 		readonly validators?: ((value: unknown) => boolean)[]
 	}
 
-	export interface Class {
+	export interface ClassDeclaration {
 		readonly type: "class"
 		// everything from `extends` and `implements`
 		readonly heritage?: Type[]

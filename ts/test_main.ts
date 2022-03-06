@@ -50,7 +50,7 @@ test("main test", async assert => {
 		assert(producedJs).equalsTo(ethalonJS)
 	}
 
-	for(let name of ["array", "conditional_types", "constant_types", "destructurizing", "enums", "fields_and_dtos", "infer", "inheritance", "mapped_types_and_indexed_access", "other_module_type_ref", "recursive_type", "simple", "tricky_property_names", "tuples", "typeof", "union_intersection", "external_types", "exportequals_to_be_imported", "class_instances"]){
+	for(let name of ["array", "conditional_types", "constant_types", "destructurizing", "enums", "fields_and_dtos", "infer", "inheritance", "mapped_types_and_indexed_access", "other_module_type_ref", "recursive_type", "simple", "tricky_property_names", "tuples", "typeof", "union_intersection", "external_types", "exportequals_to_be_imported", "class_instances", "class_inheritance"]){
 		await assertEthalonJs(["types", name])
 	}
 

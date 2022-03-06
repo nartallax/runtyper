@@ -1,4 +1,5 @@
 import {Runtyper} from "@nartallax/runtyper"
+import {B} from "types/class_inheritance"
 
 export const simplificationTests = [] as [Runtyper.Type, (Runtyper.SimpleType | string)][]
 export const validationTests = [] as [Runtyper.Type, unknown, string | null, Partial<Runtyper.ValidatorBuilderOptions>?][]
@@ -9,7 +10,7 @@ let totalTestsRun = 0
 
 export function main(): void {
 
-	let failedCount = runSimplificationTests() + runValidationTests() + runFunctionTests()
+	let failedCount = runSimplificationTests() + runValidationTests() + runFunctionTests() + runMethodTests()
 
 	if(failedCount === 0){
 		console.error(`Testing successful, ${totalTestsRun} tests passed.`)
@@ -154,6 +155,47 @@ function runFunctionTests(): number {
 				// console.error("stack: " + e.stack)
 				failCount++
 			}
+		}
+	}
+	return failCount
+}
+
+
+let methodTests: [string, unknown][] = [
+	["getBoolean", true],
+	["getName", "uwu"],
+	["getNumber", 5]
+]
+
+function runMethodTests(): number {
+	let failCount = 0
+
+	let methods = Runtyper.getPublicMethodsOfClass(B)
+	totalTestsRun++
+	if("getBoolean" in methods){
+		console.error("There is getBoolean method in methods list, but there should be not.")
+		failCount++
+	}
+
+	methods = Runtyper.getPublicMethodsOfClass(B, true)
+	let instance = new B()
+
+	for(let [name, expectedResult] of methodTests){
+		totalTestsRun++
+		try {
+			let gotResult = methods[name]!.call(instance)
+			if(expectedResult !== gotResult){
+				console.error("\nMethod test failed (of method " + name + "): ")
+				console.error("expected: " + expectedResult)
+				console.error("got: " + gotResult)
+			}
+		} catch(e){
+			if(!(e instanceof Error)){
+				throw e
+			}
+			console.error("\nMethod test failed (of method " + name + "): ")
+			console.error("error: " + e.message)
+			failCount++
 		}
 	}
 	return failCount

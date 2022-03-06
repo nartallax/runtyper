@@ -1,8 +1,9 @@
+/* eslint-disable @typescript-eslint/ban-types */
 import {Runtyper} from "entrypoint"
 import {makeRefNameFromRef} from "runtime/type_stringifier"
 
-export const functionsByName = new Map<string, () => void>()
-export const nameByFunctions = new Map<() => void, string>()
+export const functionsByName = new Map<string, Function>()
+export const nameByFunctions = new Map<Function, string>()
 export const valueTypes = new Map<string, Runtyper.Type>()
 export const refTypes = new Map<string, Runtyper.Type>()
 export const typeValidators = new Map<string, ((v: unknown) => boolean)[]>()
@@ -38,4 +39,53 @@ export function processValidators(): void {
 		arr.push(validator as (value: unknown) => boolean)
 	})
 	rawValidators.length = 0
+}
+
+export function getPublicMethodsOfClass(cls: Function, includeParentClasses?: boolean): Record<string, Function> {
+	let clsName = nameByFunctions.get(cls)
+	if(!clsName){
+		throw new Error("Cannot find class name " + cls)
+	}
+	let clsType = valueTypes.get(clsName)
+	if(!clsType){
+		throw new Error("Cannot find class type for class " + clsName)
+	}
+	if(clsType.type !== "class"){
+		throw new Error("Type that was found for class is not a `class` type: it's " + clsType.type + " : " + clsName)
+	}
+
+	let result = {} as Record<string, Function>
+	getPublicMethodsOfClassType(clsType, !!includeParentClasses, result)
+	return result
+}
+
+function getPublicMethodsOfClassType(clsType: Runtyper.ClassDeclaration, includeParentClasses: boolean, result: Record<string, Function>): void {
+	if(includeParentClasses && clsType.heritage){
+		clsType.heritage.forEach(clause => {
+			if(clause.type !== "value_reference"){
+				return
+			}
+			let type = valueTypes.get(clause.name)
+			if(!type){
+				throw new Error("Cannot get type of inherited entity by name: " + clause.name)
+			}
+			if(type.type === "class"){
+				getPublicMethodsOfClassType(type, includeParentClasses, result)
+			}
+		})
+	}
+
+	if(clsType.methods){
+		for(let methodName in clsType.methods){
+			let method = clsType.methods[methodName]!
+			if(method.access !== "public"){
+				continue
+			}
+			let fn = functionsByName.get(method.functionName)
+			if(!fn){
+				throw new Error("Failed to get method function by method name: " + method.functionName)
+			}
+			result[methodName] = fn
+		}
+	}
 }

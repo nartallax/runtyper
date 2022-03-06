@@ -17,3 +17,4 @@ local goals:
 
 check d.ts for type leaks
 check all the TODOs
+comments in d.ts

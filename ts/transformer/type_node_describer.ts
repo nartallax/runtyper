@@ -30,7 +30,7 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 		return new TypeInferrer(this, this.tricks, this.file, this.params, this.currentNode)
 	}
 
-	describeClass(decl: Tsc.ClassDeclaration): {cls: Runtyper.Class, variables: TypedVariable[], methods: TypedFunction[]} {
+	describeClass(decl: Tsc.ClassDeclaration): {cls: Runtyper.ClassDeclaration, variables: TypedVariable[], methods: TypedFunction[]} {
 		let staticProps = {} as Record<string, Runtyper.StaticProperty>
 		let instanceProps = {} as Record<string, Runtyper.InstanceProperty>
 		let methods = {} as Record<string, Runtyper.Method>
@@ -210,7 +210,7 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 	}
 
 	/** Describe class as name and generic parameters, without anything else */
-	private describeClassBase(decl: Tsc.ClassDeclaration): Runtyper.Class {
+	private describeClassBase(decl: Tsc.ClassDeclaration): Runtyper.ClassDeclaration {
 		let typeParams = this.describeTypeParameters(decl)
 		return {
 			type: "class",
