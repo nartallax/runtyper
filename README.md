@@ -20,9 +20,9 @@ Stores types during compile time in code, allows to build validators based on ty
 
 ## Install
 
-This library is a typescript transformer. That means you need something that is able to launch the transformer. Easiest way will be to use [ttypescript](https://github.com/cevek/ttypescript)
+This library is a typescript transformer. That means you need something that is able to launch the transformer. Easiest way will be to use [ttypescript](https://github.com/cevek/ttypescript).
 
-Install the package: `npm install --save @nartallax/runtyper`
+Install the package: `npm install --save @nartallax/runtyper`  
 Add reference to transformer in tsconfig.json:
 
 	"compilerOptions": {		
@@ -36,19 +36,19 @@ Add reference to transformer in tsconfig.json:
 ## Usage
 
 To validate arguments of some function, you need to build parameter checker first.  
-To build such checker, you can use `Runtyper.getArrayParameterChecker` or `Runtyper.getObjectParameterChecker`, depending on how you prefer to receive your parameters. Array checker is preferred, because it allows for destructurizing. Object checker will not only validate types of arguments, but also will place arguments into array for you to call the function.  
-You also have `Runtyper.getPublicMethodsOfClass` that can help you in getting the functions without referencing them one by one, but it's up to you to organize it.
+To build such checker, you can use `Runtyper.getArrayParameterChecker` or `Runtyper.getObjectParameterChecker`, depending on how you prefer to receive your arguments. Array checker is preferred, because it allows function to receive destructurized arguments. Object checker will not only validate types of arguments, but also will place arguments into array for you to call the function.  
+You also have `Runtyper.getPublicMethodsOfClass` that can help you get the functions without referencing them one by one, but it's up to you to organize it.
 
-External types (that is, types that come not from your code, but from some packages) are not included by default, and you will get runtime error if you will try to build validator for a type that is external or refers to external. You can allow types from specific external packages to be included, but this will result in unpredictable code bloat, see below. Adding package to allowed is done with `includeExternalTypesFrom` parameter:
+External types (that is, types that come not from your code, but from some packages) are not included by default, and you will get runtime error if you will try to build validator for a type that is external or refers to external. You can allow types from specific external packages to be included, but this may result in unpredictable code bloat, see below. Adding package to allowed is done with `includeExternalTypesFrom` parameter:
 
-	"compilerOptions": {		
+	"compilerOptions": {
 		"plugins": [{
-			"transform": "@nartallax/runtyper", 
+			"transform": "@nartallax/runtyper",
 			"type":"program",
 			"includeExternalTypesFrom": [
-                    "typescript",
-                    "@types/node"
-                ]
+				"typescript",
+				"@types/node"
+			]
 		}]
 		... other compiler options ...
 	}
@@ -57,7 +57,7 @@ Class instances are always an error by default (because you can't pass class ins
 
 	Runtyper.getArrayParameterChecker(myFn, {onClassInstance: "check_by_instanceof"})
 
-By default `unknown` and `any` types are considered bad and will result in runtime error when building validator. But you can allow them if you really mean to allow any value to be valid for this type:
+By default `unknown` and `any` types are considered bad and will result in runtime error when building validator. But you can allow them if you really mean to allow any value to be valid for this type. You can still attach an user validator to alias to any/unknown type and have some validation, see below.
 
 	Runtyper.getArrayParameterChecker(myFn, {
 		onUnknown: "allow_anything",
