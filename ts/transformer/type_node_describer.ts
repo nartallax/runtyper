@@ -327,7 +327,6 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 		let names = this.tricks.entityNameToNameArray(node.qualifier)
 		let argType = node.argument
 		let moduleName: string
-		// TODO: test for external and ambient modules here?
 		if(Tsc.isLiteralTypeNode(argType) && Tsc.isStringLiteral(argType.literal)){
 			let pathToModule = argType.literal.text
 			moduleName = this.tricks.modulePathResolver.getCanonicalModuleName(pathToModule)

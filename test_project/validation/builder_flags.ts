@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import {validationTests} from "test_project_main"
 import {Runtyper} from "@nartallax/runtyper"
 

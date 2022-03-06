@@ -21,7 +21,7 @@ interface RefInfo {
 	refName: string
 }
 
-export class TypeSimplifier {
+export class TypeSimplifier implements Runtyper.TypeSimplifier {
 
 	private currentType: Runtyper.Type | null = null
 	private readonly knownRefTypesCache = new Map<string, Runtyper.SimpleType>()

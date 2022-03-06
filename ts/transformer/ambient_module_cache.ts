@@ -37,7 +37,7 @@ export class AmbientModuleCache {
 			arr = [] as Tsc.ModuleDeclaration[]
 			this.decls.set(decl.name.text, arr)
 		} else if(arr.find(x => x === decl)){
-			return // no dulicates
+			return // no duplicates
 		}
 		arr.push(decl)
 	}

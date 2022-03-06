@@ -23,6 +23,11 @@ export namespace Runtyper {
 		includeExternalTypesFrom: string[]
 	}
 
+	export interface TypeSimplifier {
+		simplify(type: Runtyper.Type, genArgs?: {[name: string]: SimpleType}): SimpleType
+		makeNewGenericArgs(reference: ReferenceType, targetType: Type, oldGenericArgs: {[name: string]: SimpleType}): {[name: string]: SimpleType}
+	}
+
 	export interface ValidatorBuilder {
 		build<T = unknown>(type: SimpleType): (value: unknown) => value is T
 		buildNonThrowing(type: SimpleType): (value: unknown) => ValidationError | null
@@ -154,14 +159,16 @@ export namespace Runtyper {
 
 	/** Having a function, make function that validates array of arguments
 	 * If validation is not passed, the function will throw */
-	export function getArrayParameterChecker(fn: () => void, opts?: Partial<FunctionArgumentCheckerOptions>): (args: unknown[]) => void {
+	// eslint-disable-next-line @typescript-eslint/ban-types
+	export function getArrayParameterChecker(fn: Function, opts?: Partial<FunctionArgumentCheckerOptions>): (args: unknown[]) => void {
 		return new FunctionArgumentChecker(getFullArgCheckerOpts(opts)).buildForArray(fn)
 	}
 
 	/** Having a function, make function that validates object-map of arguments and lay them in order of appearance
 	 * If validation not passed, the function will throw
 	 * Resulting array of values may be used to call source function: `fn(...values)` */
-	export function getObjectParameterChecker(fn: () => void, opts?: Partial<FunctionArgumentCheckerOptions>): (args: {readonly [k: string]: unknown}) => unknown[] {
+	// eslint-disable-next-line @typescript-eslint/ban-types
+	export function getObjectParameterChecker(fn: Function, opts?: Partial<FunctionArgumentCheckerOptions>): (args: {readonly [k: string]: unknown}) => unknown[] {
 		return new FunctionArgumentChecker(getFullArgCheckerOpts(opts)).buildForObject(fn)
 	}
 
@@ -217,7 +224,7 @@ export namespace Runtyper {
 
 }
 
-/** A part of namespace dedicated to types */
+// A part of namespace dedicated to types
 export namespace Runtyper {
 
 	/** Any type structure this validator can represent.

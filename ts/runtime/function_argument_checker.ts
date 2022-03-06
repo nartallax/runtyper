@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/ban-types */
 import {Runtyper} from "entrypoint"
 import {nameByFunctions, valueTypes} from "runtime/runtime"
 import {ValidatorUtils} from "runtime/validator_utils"
@@ -20,7 +21,7 @@ export class FunctionArgumentChecker {
 		this.builder = Runtyper.getValidatorBuilder(options)
 	}
 
-	buildForArray(fn: () => void): (args: unknown[]) => void {
+	buildForArray(fn: Function): (args: unknown[]) => void {
 		let paramSets = this.getParamSets(fn)
 		return argsArray => {
 			if(!Array.isArray(argsArray)){
@@ -77,7 +78,7 @@ export class FunctionArgumentChecker {
 		}
 	}
 
-	buildForObject(fn: () => void): (args: {[k: string]: unknown}) => unknown[] {
+	buildForObject(fn: Function): (args: {[k: string]: unknown}) => unknown[] {
 		let paramSets = this.getParamSets(fn)
 		let hasNamelessParameter = !!paramSets.find(set => set.params.find(param => param.name === undefined))
 		if(hasNamelessParameter){
@@ -136,7 +137,7 @@ export class FunctionArgumentChecker {
 		}
 	}
 
-	private getParamSets(fn: () => void): ParamSet[] {
+	private getParamSets(fn: Function): ParamSet[] {
 		let fnName = nameByFunctions.get(fn)
 		if(!fnName){
 			throw new Error("Cannot build argument checker: function is not known: " + fn)
