@@ -97,10 +97,7 @@ There are lots of them.
 5. Many things are explicitly not supported. Typescript is great and complex language, and there are a lot of ways to use it, and this advantage becomes pain when it comes to writing something that works with the code. Don't get me wrong, a lot of fairly complex cases and most of type constructs will work just fine; you just can get a "not supported" error if you will do something that I did not expect (like `type X = "a" infers "b"? "c": never` will fail).
 6. Imports are complicated. That's why even after testing I'm not sure that I covered all the cases. If you found that something is not found that should be found, feel free to create an issue.
 7. When something is marked optional (function parameters, object fields etc), an `undefined` value is also allowed there. It's fine in most of the cases, and makes processing of mapped index types a little easier.  
-8. Validation of union types is not the best in the world. Error messages when validating a union may sometimes be just an error of the last type of the union, and sometimes error about root of union value (but only if there is really non-matching value; if value is good, validation of it will not result an error). Also union types are validated more strictly than typescript does it; for example, the following is fine by typescript's standards, but will result in error if validated:
-
-	function fn(arg: {a: number} | {b: number}): void { ... }
-	fn({a: 5, b: 10})
+8. Validation of union types is not the best in the world. Error messages when validating a union may sometimes be just an error of the last type of the union, and sometimes error about root of union value (but only if there is really non-matching value; if value is good, validation of it will not result an error). Also union types are validated more strictly than typescript does it; for example, the following is fine by typescript's standards, but will result in error if validated: `function fn(arg: {a: number} | {b: number}): void { ... }; fn({a: 5, b: 10})`
 
 ## Naming
 
