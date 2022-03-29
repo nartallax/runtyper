@@ -1,6 +1,6 @@
 {
   "name": "@nartallax/runtyper",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A Typescript transformer that stores information about types to use in runtime.",
   "main": "runtyper.js",
   "types": "runtyper.d.ts",
@@ -13,7 +13,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git:nartallax/toolbox-transformer"
+    "url": "github:nartallax/runtyper"
   },
   "author": "Nartallax",
   "license": "0BSD",
