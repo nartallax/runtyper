@@ -4,6 +4,7 @@ import {ReadonlyTextRange} from "typescript"
 import {ClamsensorExceptionSpecification} from "@nartallax/clamsensor"
 import * as Clmsnsr from "@nartallax/clamsensor"
 import {Nya, NyaNya} from "types/exportequals_to_be_imported"
+import {version} from "@typescript-eslint/parser"
 
 interface Point {
 	x: number
@@ -36,3 +37,6 @@ export type MyVerEntry = Clmsnsr.ClamsensorVerificationEntryDescription
 
 // non-external imports from exportequals namespace
 export type MyNyaNya = Nya | NyaNya
+
+// here we test that function imported from non-whitelisted module won't add a value in values array
+export type ExampleFnType = typeof version

@@ -301,10 +301,6 @@ export class TransformationScope {
 		}
 	}
 
-	addValueExpressionToFunctions(name: string, node: Tsc.Expression): void {
-		this.functionsByName.add(name, node)
-	}
-
 	addImportedValueToFunctions(name: string, node: Tsc.Node): void {
 		let moduleName = this.tricks.getModuleNameForImport(node)
 		if(!moduleName){

@@ -42,15 +42,6 @@ export class RuntyperTricks extends ToolboxTransformer.ToolboxTricks {
 		}
 	}
 
-	isNodeInNodeModules(decl: Tsc.Node): boolean {
-		return this.isFileInNodeModules(decl.getSourceFile().fileName)
-	}
-
-	isFileInNodeModules(file: string): boolean {
-		let pathParts = file.split(/[/\\]/)
-		return !!pathParts.find(x => x === "node_modules")
-	}
-
 	extractVariablesFromDeclaration(el: Tsc.VariableDeclaration): DestructVariable[] {
 		return this.extractVariablesFromBinding(el.name, [])
 	}

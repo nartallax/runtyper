@@ -570,13 +570,21 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 
 
 	describeImportSpecifierSource(importDecl: Tsc.ImportSpecifier, typeArgs: readonly Tsc.TypeNode[]): Runtyper.Type {
-		let {modSpec, moduleFilePath} = this.resolveImportSpecifierTargetModule(importDecl)
+		let modSpec = importDecl.parent.parent.parent.moduleSpecifier
+		if(!Tsc.isStringLiteral(modSpec)){
+			return this.fail("Module specifier is not string literal: ", modSpec)
+		}
+
 		let origName = importDecl.propertyName || importDecl.name
 
 		let decl = this.tricks.findImportedDeclaration(origName.text, modSpec.text, this.file)
 		let ref = this.describeReferencedDeclarationType(decl, typeArgs)
 
-		if(this.tricks.isFileInNodeModules(moduleFilePath)){
+		let externalPkg = this.tricks.modulePathResolver.getExternalPackageNameAndPath(decl.getSourceFile().fileName)
+		if(externalPkg){
+			if(!this.params.allowedExtPacks.has(externalPkg.packageName)){
+				return this.fail("External type from package " + externalPkg.packageName + " was not converted to type description: ", importDecl)
+			}
 			this.describeExternalDeclarationRecursively(decl)
 		}
 
@@ -687,28 +695,9 @@ export class TypeNodeDescriber extends TypeDescriberBase {
 		return error
 	}
 
-	private getDeclarationSourceFilePath(decl: Tsc.Declaration): string {
-		if(Tsc.isImportSpecifier(decl.parent)){
-			return this.resolveImportSpecifierTargetModule(decl.parent).moduleFilePath
-		} else {
-			return decl.getSourceFile().fileName
-		}
-	}
-
-	private resolveImportSpecifierTargetModule(importSpec: Tsc.ImportSpecifier): {modSpec: Tsc.StringLiteral, moduleFilePath: string} {
-		let modSpec = importSpec.parent.parent.parent.moduleSpecifier
-		if(!Tsc.isStringLiteral(modSpec)){
-			throw new Error("Module specifier is not string literal: " + modSpec.getText())
-		}
-
-		let moduleFilePath = this.tricks.moduleFilePath(modSpec.text, this.file)
-		return {moduleFilePath, modSpec}
-	}
-
 	private processExternalTypeDecls(node: Tsc.NodeWithTypeArguments, decls: Tsc.Declaration[], symbol: Tsc.Symbol): Runtyper.Type | null {
 		let decl = decls[0]!
-		let declPath = this.getDeclarationSourceFilePath(decl)
-		let externalRef = this.tricks.modulePathResolver.getExternalPackageNameAndPath(declPath)
+		let externalRef = this.tricks.modulePathResolver.getExternalPackageNameAndPath(decl.getSourceFile().fileName)
 		if(!externalRef){
 			return null
 		}
